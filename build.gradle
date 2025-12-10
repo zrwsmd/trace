@@ -1,0 +1,143 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.0.2'
+    id 'io.spring.dependency-management' version '1.1.0'
+    id 'org.graalvm.buildtools.native' version '0.9.18'
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'maven'
+    apply plugin: 'java'
+}
+
+allprojects {
+    group = 'com.yt.server'
+    version = '0.0.1-SNAPSHOT'
+    sourceCompatibility = '17'
+
+    repositories {
+        maven {
+            name 'aliyun'
+            url 'https://maven.aliyun.com/repository/public'
+        }
+        maven {
+            url 'https://jitpack.io'
+        }
+        mavenCentral()
+        mavenLocal()
+
+    }
+
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+        mybatisGenerator
+    }
+
+    dependencyManagement {
+        dependencies {
+            dependency('org.springframework.boot:spring-boot-starter:3.0.2') {
+                exclude 'org.apache.logging.log4j:log4j-to-slf4j'
+                exclude 'org.slf4j:jul-to-slf4j'
+            }
+
+            dependency('org.mybatis.spring.boot:mybatis-spring-boot-starter:3.0.1') {
+                exclude 'org.springframework.boot:spring-boot-starter'
+            }
+
+            dependency('org.mybatis:mybatis:3.5.11')
+            dependency('org.reflections:reflections:0.10.2')
+        }
+    }
+
+    dependencies {
+        implementation('ch.qos.logback:logback-classic')
+    }
+}
+
+
+
+dependencies {
+//    implementation('org.springframework.boot:spring-boot-starter-webflux')
+//    implementation('org.mybatis.spring.boot:mybatis-spring-boot-starter')
+
+   // runtimeOnly('com.mysql:mysql-connector-j')
+    implementation('org.javassist:javassist:3.29.2-GA')
+
+    testImplementation('org.springframework.boot:spring-boot-starter-test')
+    testImplementation('io.projectreactor:reactor-test')
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation('org.mybatis.spring.boot:mybatis-spring-boot-starter')
+    implementation('ch.qos.logback:logback-classic')
+    implementation 'com.github.pagehelper:pagehelper:5.3.2'
+    implementation 'com.github.ggalmazor:lt_downsampling_java8:0.0.7'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.1'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+    implementation 'org.javassist:javassist:3.29.2-GA'
+    implementation 'commons-io:commons-io:2.11.0'
+    implementation 'commons-codec:commons-codec:1.15'
+    implementation 'org.apache.commons:commons-lang3:3.12.0'
+    implementation 'com.google.code.gson:gson:2.9.1'
+    implementation group: 'commons-collections', name: 'commons-collections', version: '3.2.2'
+    implementation group: 'io.netty', name: 'netty-all', version: '4.1.87.Final'
+    implementation group: 'cn.hutool', name: 'hutool-all', version: '5.8.12'
+    implementation group: 'cn.ipokerface', name: 'mybatis-generator', version: '1.6.0'
+    implementation group: 'org.dom4j', name: 'dom4j', version: '2.1.4'
+    implementation 'com.alibaba:fastjson:2.0.24'
+    implementation group: 'commons-lang', name: 'commons-lang', version: '2.6'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+//    implementation 'org.apache.shardingsphere:sharding-jdbc-spring-boot-starter:4.1.1'
+    compileOnly 'org.projectlombok:lombok:1.18.26'
+    implementation 'mysql:mysql-connector-java:8.0.30'
+    // https://mvnrepository.com/artifact/org.apache.commons/commons-compress
+    implementation 'org.apache.commons:commons-compress:1.22'
+// https://mvnrepository.com/artifact/com.google.guava/guava
+    implementation 'com.google.guava:guava:32.1.1-jre'
+    // https://mvnrepository.com/artifact/com.sun.jna/jna
+//    implementation group: 'com.sun.jna', name: 'jna', version: '3.0.9'
+// https://mvnrepository.com/artifact/net.java.dev.jna/jna
+    implementation group: 'net.java.dev.jna', name: 'jna', version: '5.13.0'
+// https://mvnrepository.com/artifact/net.java.dev.jna/jna-platform
+    implementation group: 'net.java.dev.jna', name: 'jna-platform', version: '5.13.0'
+
+
+
+
+
+}
+
+
+//bootBuildImage {
+////    builder = "myprivateartifactory/paketobuildpacks/builder:base"
+////    runImage = "myprivateartifactory/paketobuildpacks/run:base-cnb"
+//    builder = 'docker.io/paketobuildpacks/builder:tiny'
+//    runImage = 'docker.io/paketobuildpacks/run:tiny-cnb'
+//    buildpacks = ['gcr.io/paketo-buildpacks/java-native-image']
+////    binding("bindnings/bellsoft-jre-config:/platform/bindings/bellsoft-jre-config")
+//    environment = [
+//            "BP_NATIVE_IMAGE" : "true",
+//    ]
+//}
+
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+//tasks.register('mybatisGenerate') {
+//    ant.taskdef(
+//            name: 'mbgenerator',
+//            classname: 'org.mybatis.generator.ant.GeneratorAntTask',
+//            classpath: configurations.mybatisGenerator.asPath
+//    )
+//    ant.mbgenerator(overwrite: true,
+//            configfile: 'generatorConfig.xml', verbose: true)
+//}
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+

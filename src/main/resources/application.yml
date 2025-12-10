@@ -1,0 +1,48 @@
+#io:
+#    bufferSize: 128
+#logging:
+#    file:
+#        name: ./logs/spring.log
+#    level:
+#        org:
+#            mybatis: debug
+#        root: info
+#    logback:
+#        rollingpolicy:
+#            clean-history-on-start: true
+#            file-name-pattern: ${LOG_FILE}.%d{yyyy-MM-dd}.%i.gz
+#            max-file-size: 10MB
+#            max-history: 10
+#mybatis:
+#    inject-sql-session-on-mapper-scan: true
+#    lazy-initialization: true
+#server:
+#    port: 17777
+#spring:
+#    main:
+#        allow-bean-definition-overriding: true
+#    shardingsphere:
+#        datasource:
+#            name: test
+#            test:
+#                type: com.alibaba.druid.pool.DruidDataSource
+#                driver-class-name: com.mysql.cj.jdbc.Driver
+#                jdbc-url: jdbc:mysql://localhost:3306/test?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=GMT%2B8
+#                username: root
+#                password: 123456
+#        props:
+#            sql:
+#                show: true
+#        sharding:
+#            tables:
+#                trace1:
+#                       #test.trace1$->{0..1}  test.trace1_${0..1}
+#                    actual-data-nodes: test.trace1_${0..9}
+##                    key-generator:
+##                        column: id
+##                        type: SNOWFLAKE
+#                    table-strategy:
+#                        standard:
+#                            precise-algorithm-class-name: com.yt.server.service.shard.TabStandardPreciseShardingAlgorithm
+#                            range-algorithm-class-name: com.yt.server.service.shard.TabStandardRangeShardingAlgorithm
+#                            sharding-column: id

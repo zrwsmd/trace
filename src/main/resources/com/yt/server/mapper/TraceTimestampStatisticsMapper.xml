@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yt.server.mapper.TraceTimestampStatisticsMapper">
+  <resultMap id="BaseResultMap" type="com.yt.server.entity.TraceTimestampStatistics">
+    <id column="traceId" jdbcType="BIGINT" property="traceId" />
+    <result column="tempTimestamp" jdbcType="BIGINT" property="tempTimestamp" />
+    <result column="lastEndTimestamp" jdbcType="BIGINT" property="lastEndTimestamp" />
+    <result column="reachedBatchNum" jdbcType="INTEGER" property="reachedBatchNum" />
+    <result column="loopNum" jdbcType="INTEGER" property="loopNum" />
+  </resultMap>
+  <sql id="Example_Where_Clause">
+    <where>
+      <foreach collection="oredCriteria" item="criteria" separator="or">
+        <if test="criteria.valid">
+          <trim prefix="(" prefixOverrides="and" suffix=")">
+            <foreach collection="criteria.criteria" item="criterion">
+              <choose>
+                <when test="criterion.noValue">
+                  and ${criterion.condition}
+                </when>
+                <when test="criterion.singleValue">
+                  and ${criterion.condition} #{criterion.value}
+                </when>
+                <when test="criterion.betweenValue">
+                  and ${criterion.condition} #{criterion.value} and #{criterion.secondValue}
+                </when>
+                <when test="criterion.listValue">
+                  and ${criterion.condition}
+                  <foreach close=")" collection="criterion.value" item="listItem" open="(" separator=",">
+                    #{listItem}
+                  </foreach>
+                </when>
+              </choose>
+            </foreach>
+          </trim>
+        </if>
+      </foreach>
+    </where>
+  </sql>
+  <sql id="Base_Column_List">
+    traceId, tempTimestamp, lastEndTimestamp, reachedBatchNum, loopNum
+  </sql>
+  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    select
+    <include refid="Base_Column_List" />
+    from trace_timestamp_statistics
+    where traceId = #{traceId,jdbcType=BIGINT}
+  </select>
+  <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
+    delete from trace_timestamp_statistics
+    where traceId = #{traceId,jdbcType=BIGINT}
+  </delete>
+  <insert id="insert" parameterType="com.yt.server.entity.TraceTimestampStatistics">
+    insert into trace_timestamp_statistics (traceId, tempTimestamp, lastEndTimestamp,
+                                            reachedBatchNum, loopNum)
+    values (#{traceId,jdbcType=BIGINT}, #{tempTimestamp,jdbcType=BIGINT}, #{lastEndTimestamp,jdbcType=BIGINT},
+            #{reachedBatchNum,jdbcType=INTEGER}, #{loopNum,jdbcType=INTEGER})
+  </insert>
+  <insert id="insertSelective" parameterType="com.yt.server.entity.TraceTimestampStatistics">
+    insert into trace_timestamp_statistics
+    <trim prefix="(" suffix=")" suffixOverrides=",">
+      <if test="traceId != null">
+        traceId,
+      </if>
+      <if test="tempTimestamp != null">
+        tempTimestamp,
+      </if>
+      <if test="lastEndTimestamp != null">
+        lastEndTimestamp,
+      </if>
+      <if test="reachedBatchNum != null">
+        reachedBatchNum,
+      </if>
+      <if test="loopNum != null">
+        loopNum,
+      </if>
+    </trim>
+    <trim prefix="values (" suffix=")" suffixOverrides=",">
+      <if test="traceId != null">
+        #{traceId,jdbcType=BIGINT},
+      </if>
+      <if test="tempTimestamp != null">
+        #{tempTimestamp,jdbcType=BIGINT},
+      </if>
+      <if test="lastEndTimestamp != null">
+        #{lastEndTimestamp,jdbcType=BIGINT},
+      </if>
+      <if test="reachedBatchNum != null">
+        #{reachedBatchNum,jdbcType=INTEGER},
+      </if>
+      <if test="loopNum != null">
+        #{loopNum,jdbcType=INTEGER},
+      </if>
+    </trim>
+  </insert>
+  <select id="countByExample" parameterType="com.yt.server.entity.TraceTimestampStatisticsExample" resultType="java.lang.Long">
+    select count(*) from trace_timestamp_statistics
+    <if test="_parameter != null">
+      <include refid="Example_Where_Clause" />
+    </if>
+  </select>
+  <update id="updateByPrimaryKeySelective" parameterType="com.yt.server.entity.TraceTimestampStatistics">
+    update trace_timestamp_statistics
+    <set>
+      <if test="tempTimestamp != null">
+        tempTimestamp = #{tempTimestamp,jdbcType=BIGINT},
+      </if>
+      <if test="lastEndTimestamp != null">
+        lastEndTimestamp = #{lastEndTimestamp,jdbcType=BIGINT},
+      </if>
+      <if test="reachedBatchNum != null">
+        reachedBatchNum = #{reachedBatchNum,jdbcType=INTEGER},
+      </if>
+      <if test="loopNum != null">
+        loopNum = #{loopNum,jdbcType=INTEGER},
+      </if>
+    </set>
+    where traceId = #{traceId,jdbcType=BIGINT}
+  </update>
+  <update id="updateByPrimaryKey" parameterType="com.yt.server.entity.TraceTimestampStatistics">
+    update trace_timestamp_statistics
+    set tempTimestamp = #{tempTimestamp,jdbcType=BIGINT},
+        lastEndTimestamp = #{lastEndTimestamp,jdbcType=BIGINT},
+        reachedBatchNum = #{reachedBatchNum,jdbcType=INTEGER},
+        loopNum = #{loopNum,jdbcType=INTEGER}
+    where traceId = #{traceId,jdbcType=BIGINT}
+  </update>
+</mapper>

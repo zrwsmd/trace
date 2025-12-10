@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE configuration PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-config.dtd">
+<configuration>
+    <settings>
+        <setting name="logImpl" value="STDOUT_LOGGING"/>
+    </settings>
+<!--    <typeAliases>-->
+<!--        <typeAlias alias="Student" type="com.mybatis3.domain.Student"/>-->
+<!--    </typeAliases>-->
+<!--    <environments default="development">-->
+<!--        <environment id="development">-->
+<!--            <transactionManager type="JDBC"/>-->
+<!--            <dataSource type="POOLED">-->
+<!--                <property name="driver" value="${spring.datasource.druid.mysql.driver-class-name}"/>-->
+<!--                <property name="url" value="${spring.datasource.druid.mysql.url}"/>-->
+<!--                <property name="username" value="${spring.datasource.druid.mysql.username}"/>-->
+<!--                <property name="password" value="${spring.datasource.druid.mysql.password}"/>-->
+<!--            </dataSource>-->
+<!--        </environment>-->
+<!--    </environments>-->
+</configuration>
