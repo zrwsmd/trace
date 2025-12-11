@@ -152,14 +152,11 @@ public class HandleWasteTimeService {
                             List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
                             if (CollectionUtils.isNotEmpty(singleVarDataList)) {
                                 List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
-
                                 if (originalFilterVarDataList.size() <= downSamplingRate) {
                                     continue;
                                 }
-
                                 int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
                                 List<UniPoint> downsampledList = DownsamplingAlgorithmSelector.downsample(originalFilterVarDataList, bucketSize);
-
                                 String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
                                 //save to database
                                 List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
@@ -220,11 +217,9 @@ public class HandleWasteTimeService {
                 List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
                 if (CollectionUtils.isNotEmpty(singleVarDataList)) {
                     List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
-
                     if (originalFilterVarDataList.size() <= downSamplingRate) {
                         continue;
                     }
-
                     int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
                     List<UniPoint> downsampledList = DownsamplingAlgorithmSelector.downsample(originalFilterVarDataList, bucketSize);
                     String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));

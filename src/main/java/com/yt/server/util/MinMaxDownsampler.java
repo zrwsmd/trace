@@ -38,7 +38,7 @@ public class MinMaxDownsampler {
         if (step < 1) step = 1;
 
         List<UniPoint> sampledPoints = new ArrayList<>(bucketCount * 2);
-        String varName = data.get(0).getVarName(); // Assuming all points have same varName
+        //String varName = data.get(0).getVarName(); // Assuming all points have same varName
 
         for (int i = 0; i < bucketCount; i++) {
             int start = i * step;
