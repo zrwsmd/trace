@@ -34,3 +34,4 @@ This is a **Spring Boot 3** application configured for **GraalVM Native Image** 
 - **Dependencies**: Spring Boot Starter Web, MyBatis, Netty, Hutool, FastJSON.
 - @src\main\java\com\yt\server\service\IoComposeServiceDatabase.java 这个文件是我的主要实现逻辑
 - 不要声明这种变量, java.math.BigDecimal volatilityIndex,java的这种包直接import就行，干嘛还要加全类名了
+- 回复和思考都用中文返回给我
