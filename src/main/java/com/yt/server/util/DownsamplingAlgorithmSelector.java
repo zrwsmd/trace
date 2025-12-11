@@ -29,9 +29,7 @@ public class DownsamplingAlgorithmSelector {
         if (dataPoints == null || dataPoints.size() <= targetCount || targetCount <= 0) {
             return dataPoints;
         }
-
         BigDecimal volatilityIndex = calculateVolatilityIndex(dataPoints);
-
         if (volatilityIndex.compareTo(THRESHOLD) > 0) {
             logger.debug("Volatility index ({}) > threshold ({}). Using Min-Max downsampling.", volatilityIndex, THRESHOLD);
             // For Min-Max, we want targetCount/2 buckets, each producing 2 points.
@@ -54,32 +52,25 @@ public class DownsamplingAlgorithmSelector {
         if (dataPoints == null || dataPoints.size() < 2) {
             return BigDecimal.ZERO;
         }
-
         BigDecimal minY = dataPoints.get(0).getY();
         BigDecimal maxY = dataPoints.get(0).getY();
         BigDecimal totalVerticalDistance = BigDecimal.ZERO;
-
         for (int i = 1; i < dataPoints.size(); i++) {
             UniPoint currentPoint = dataPoints.get(i);
             UniPoint previousPoint = dataPoints.get(i - 1);
             BigDecimal currentY = currentPoint.getY();
-
             if (currentY.compareTo(minY) < 0) {
                 minY = currentY;
             }
             if (currentY.compareTo(maxY) > 0) {
                 maxY = currentY;
             }
-
             totalVerticalDistance = totalVerticalDistance.add(currentY.subtract(previousPoint.getY()).abs());
         }
-
         BigDecimal verticalRange = maxY.subtract(minY);
-
         if (verticalRange.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO; // Horizontal line, no volatility.
         }
-
         return totalVerticalDistance.divide(verticalRange, 2, RoundingMode.HALF_UP);
     }
 }
