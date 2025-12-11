@@ -150,60 +150,25 @@ public class HandleWasteTimeService {
 //                            varName = varName.trim();
 //                            String finalVarName = varName;
                             List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
-                            List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
-                            // 如果数据点太少，直接跳过，不做任何降采样
-                            if (originalFilterVarDataList.size() <= downSamplingRate) {
-                                continue;
-                            }
-                            // ====================== 逻辑修改开始 ======================
-                            BigDecimal volatilityIndex = BigDecimal.ZERO;
-                            if (originalFilterVarDataList.size() > 1) {
-                               BigDecimal minY = originalFilterVarDataList.get(0).getY();
-                                BigDecimal maxY = originalFilterVarDataList.get(0).getY();
-                                BigDecimal totalVerticalDistance = BigDecimal.ZERO;
+                            if (CollectionUtils.isNotEmpty(singleVarDataList)) {
+                                List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
 
-                                for (int i = 1; i < originalFilterVarDataList.size(); i++) {
-                                    UniPoint currentPoint = originalFilterVarDataList.get(i);
-                                    UniPoint previousPoint = originalFilterVarDataList.get(i - 1);
-                                    BigDecimal currentY = currentPoint.getY();
-
-                                    if (currentY.compareTo(minY) < 0) {
-                                        minY = currentY;
-                                    }
-                                    if (currentY.compareTo(maxY) > 0) {
-                                        maxY = currentY;
-                                    }
-                                    totalVerticalDistance = totalVerticalDistance.add(currentY.subtract(previousPoint.getY()).abs());
+                                if (originalFilterVarDataList.size() <= downSamplingRate) {
+                                    continue;
                                 }
-                                BigDecimal verticalRange = maxY.subtract(minY);
-                                if (verticalRange.compareTo(BigDecimal.ZERO) > 0) {
-                                    volatilityIndex = totalVerticalDistance.divide(verticalRange, 2, RoundingMode.HALF_UP);
-                                }
-                            }
 
-                            int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
-                            final BigDecimal THRESHOLD = new BigDecimal("2");
+                                int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
+                                List<UniPoint> downsampledList = DownsamplingAlgorithmSelector.downsample(originalFilterVarDataList, bucketSize);
 
-                            if (volatilityIndex.compareTo(THRESHOLD) > 0) {
-                                logger.info("【降采样】变量 '{}', 折腾指数: {}. 使用 Min-Max 算法.", varName, volatilityIndex);
-                                singleVarDataList = MinMaxDownsampler.downsample(originalFilterVarDataList, bucketSize * 2);
-                            } else {
-                                logger.info("【降采样】变量 '{}', 折腾指数: {}. 使用 LTTB 算法.", varName, volatilityIndex);
-                                if (bucketSize > 0) {
-                                    singleVarDataList = LTThreeBuckets.sorted(originalFilterVarDataList, bucketSize);
-                                } else {
-                                    singleVarDataList = originalFilterVarDataList;
-                                }
+                                String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
+                                //save to database
+                                List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
+                                BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
+                                Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 4, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                             }
-                            // ======================= 逻辑修改结束 =======================
-                            String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
-                            //save to database
-                            List<Object[]> dataObjArr = convertPojoList2ObjListArr(singleVarDataList, 2);
-                            BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
-                            Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(singleVarDataList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
-                            Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 4, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
-                            handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
-                            handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                         }
                         traceTimestampStatistics = new TraceTimestampStatistics();
                         traceTimestampStatistics.setTraceId(traceId);
@@ -255,57 +220,18 @@ public class HandleWasteTimeService {
                 List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
                 if (CollectionUtils.isNotEmpty(singleVarDataList)) {
                     List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
-                    // 如果数据点太少，直接跳过，不做任何降采样
+
                     if (originalFilterVarDataList.size() <= downSamplingRate) {
                         continue;
                     }
-                    // ====================== 逻辑修改开始 ======================
-                    BigDecimal volatilityIndex = BigDecimal.ZERO;
-                    if (originalFilterVarDataList.size() > 1) {
-                        BigDecimal minY = originalFilterVarDataList.get(0).getY();
-                        BigDecimal maxY = originalFilterVarDataList.get(0).getY();
-                        BigDecimal totalVerticalDistance = BigDecimal.ZERO;
-
-                        for (int i = 1; i < originalFilterVarDataList.size(); i++) {
-                            UniPoint currentPoint = originalFilterVarDataList.get(i);
-                            UniPoint previousPoint = originalFilterVarDataList.get(i - 1);
-                            BigDecimal currentY = currentPoint.getY();
-
-                            if (currentY.compareTo(minY) < 0) {
-                                minY = currentY;
-                            }
-                            if (currentY.compareTo(maxY) > 0) {
-                                maxY = currentY;
-                            }
-                            totalVerticalDistance = totalVerticalDistance.add(currentY.subtract(previousPoint.getY()).abs());
-                        }
-                        BigDecimal verticalRange = maxY.subtract(minY);
-                        if (verticalRange.compareTo(BigDecimal.ZERO) > 0) {
-                            volatilityIndex = totalVerticalDistance.divide(verticalRange, 2, RoundingMode.HALF_UP);
-                        }
-                    }
 
                     int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
-                    final BigDecimal THRESHOLD = new BigDecimal("2");
-
-                    if (volatilityIndex.compareTo(THRESHOLD) > 0) {
-                        logger.info("【降采样】变量 '{}', 折腾指数: {}. 使用 Min-Max 算法.", varName, volatilityIndex);
-                        singleVarDataList = com.yt.server.util.MinMaxDownsampler.downsample(originalFilterVarDataList, bucketSize * 2);
-                    } else {
-                        logger.info("【降采样】变量 '{}', 折腾指数: {}. 使用 LTTB 算法.", varName, volatilityIndex);
-                        if (bucketSize > 0) {
-                            singleVarDataList = LTThreeBuckets.sorted(originalFilterVarDataList, bucketSize);
-                        } else {
-                            singleVarDataList = originalFilterVarDataList;
-                        }
-                    }
-                    // ======================= 逻辑修改结束 =======================
+                    List<UniPoint> downsampledList = DownsamplingAlgorithmSelector.downsample(originalFilterVarDataList, bucketSize);
                     String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
-
                     //save to database
-                    List<Object[]> dataObjArr = convertPojoList2ObjListArr(singleVarDataList, 2);
+                    List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
                     BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
-                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(singleVarDataList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
                     Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 4, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
                     handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                     handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
