@@ -27,28 +27,21 @@ public class MinMaxDownsampler {
         if (CollectionUtils.isEmpty(data) || threshold >= data.size()) {
             return data;
         }
-
         // We want to return 'threshold' points.
         // Since we select 2 points (min and max) per bucket, we need threshold/2 buckets.
         int bucketCount = Math.max(1, threshold / 2);
-
         // Calculate bucket size
         int dataSize = data.size();
         int step = dataSize / bucketCount;
         if (step < 1) step = 1;
-
         List<UniPoint> sampledPoints = new ArrayList<>(bucketCount * 2);
         //String varName = data.get(0).getVarName(); // Assuming all points have same varName
-
         for (int i = 0; i < bucketCount; i++) {
             int start = i * step;
             int end = Math.min((i + 1) * step, dataSize);
-
             if (start >= end) break;
-
             UniPoint minPoint = null;
             UniPoint maxPoint = null;
-
             // Find min and max Y in this bucket
             for (int j = start; j < end; j++) {
                 UniPoint current = data.get(j);
@@ -59,13 +52,20 @@ public class MinMaxDownsampler {
                     maxPoint = current;
                 }
             }
-
             if (minPoint != null) {
                 // Determine order by X to keep time sequence valid
+                /**
+                 * 保证插入的顺序是按照时间戳(x值)从小到大插入到sampledPoints里面的
+                 * [ (4, 9), (5, 4), (6, 7), (7, 3) ]
+                 * minPoint 是 (7, 3)。maxPoint 是 (4, 9)。
+                 * 比较X值： minPoint.getX() (7) > maxPoint.getX() (4)。
+                 * 先把 maxPoint 存进去，再存 minPoint。
+                 *
+                 */
                 if (minPoint.getX().compareTo(maxPoint.getX()) <= 0) {
                     sampledPoints.add(minPoint);
                     if (minPoint != maxPoint) {
-                         sampledPoints.add(maxPoint);
+                        sampledPoints.add(maxPoint);
                     }
                 } else {
                     sampledPoints.add(maxPoint);
@@ -73,7 +73,6 @@ public class MinMaxDownsampler {
                 }
             }
         }
-
         // Ensure the very first and last points are included if critical for continuity,
         // though MinMax usually covers range well.
         // LTTB enforces first and last, we can optionally check them here but MinMax naturally captures extremes.
@@ -81,7 +80,6 @@ public class MinMaxDownsampler {
         // Sort by X to ensure strict time ordering, although bucket processing usually guarantees this
         // except when min/max swap within a bucket (handled above).
         // Sorting generally not needed if buckets are processed sequentially and points added in X order.
-
         return sampledPoints;
     }
 }
