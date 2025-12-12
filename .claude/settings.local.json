@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Skill(document-skills:xlsx)",
+      "Bash(python:*)",
+      "Bash(pip install:*)"
     ],
     "deny": [],
     "ask": []
