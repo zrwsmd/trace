@@ -110,6 +110,20 @@ public class DownsamplingAlgorithmSelector {
 
     private static List<UniPoint> executeSingleAlgorithm(List<UniPoint> dataPoints, int targetCount) {
         BigDecimal volatilityIndex = calculateVolatilityIndex(dataPoints);
+
+        // Optimization 4: Fast path for horizontal lines
+        /**
+         - 判断条件: 如果一个数据窗口的波动指数为 0（且至少包含 2 个点），说明该窗口内所有点的 Y 值完全一致，是一条水平直线。
+         - 优化操作: 直接返回该窗口的第一个点和最后一个点，完全跳过后续复杂的 LTTB 或 Min-Max 算法计算。
+         - 收益: 对于包含大量平稳段（水平线）的数据集，该优化能显著降低 CPU 消耗并提升处理速度。
+         */
+        if (volatilityIndex.compareTo(BigDecimal.ZERO) == 0 && dataPoints.size() >= 2) {
+            List<UniPoint> result = new ArrayList<>(2);
+            result.add(dataPoints.get(0));
+            result.add(dataPoints.get(dataPoints.size() - 1));
+            return result;
+        }
+
         if (volatilityIndex.compareTo(THRESHOLD) > 0) {
             // logger.debug("Volatility index ({}) > threshold ({}). Using Min-Max downsampling.", volatilityIndex, THRESHOLD);
             return MinMaxDownsampler.downsample(dataPoints, targetCount);
