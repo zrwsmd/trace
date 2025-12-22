@@ -4,7 +4,8 @@
       "Bash(cat:*)",
       "Skill(document-skills:xlsx)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(./gradlew classes)"
     ],
     "deny": [],
     "ask": []
