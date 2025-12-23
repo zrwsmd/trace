@@ -5,8 +5,6 @@ import com.yt.server.entity.UniPoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -17,7 +15,7 @@ import java.util.List;
 public class DownsamplingAlgorithmSelector {
 
     private static final Logger logger = LoggerFactory.getLogger(DownsamplingAlgorithmSelector.class);
-    private static final BigDecimal THRESHOLD = new BigDecimal("2");
+    private static final double THRESHOLD = 2.0;
     private static final int WINDOW_SIZE = 512;
 
     /**
@@ -109,7 +107,7 @@ public class DownsamplingAlgorithmSelector {
     }
 
     private static List<UniPoint> executeSingleAlgorithm(List<UniPoint> dataPoints, int targetCount) {
-        BigDecimal volatilityIndex = calculateVolatilityIndex(dataPoints);
+        double volatilityIndex = calculateVolatilityIndex(dataPoints);
 
         // Optimization 4: Fast path for horizontal lines
         /**
@@ -117,14 +115,14 @@ public class DownsamplingAlgorithmSelector {
          - 优化操作: 直接返回该窗口的第一个点和最后一个点，完全跳过后续复杂的 LTTB 或 Min-Max 算法计算。
          - 收益: 对于包含大量平稳段（水平线）的数据集，该优化能显著降低 CPU 消耗并提升处理速度。
          */
-        if (volatilityIndex.compareTo(BigDecimal.ZERO) == 0 && dataPoints.size() >= 2) {
+        if (volatilityIndex == 0.0 && dataPoints.size() >= 2) {
             List<UniPoint> result = new ArrayList<>(2);
             result.add(dataPoints.get(0));
             result.add(dataPoints.get(dataPoints.size() - 1));
             return result;
         }
 
-        if (volatilityIndex.compareTo(THRESHOLD) > 0) {
+        if (volatilityIndex > THRESHOLD) {
             // logger.debug("Volatility index ({}) > threshold ({}). Using Min-Max downsampling.", volatilityIndex, THRESHOLD);
             return MinMaxDownsampler.downsample(dataPoints, targetCount);
         } else {
@@ -140,29 +138,28 @@ public class DownsamplingAlgorithmSelector {
      * @param dataPoints The list of points.
      * @return The calculated volatility index.
      */
-    public static BigDecimal calculateVolatilityIndex(List<UniPoint> dataPoints) {
+    public static double calculateVolatilityIndex(List<UniPoint> dataPoints) {
         if (dataPoints == null || dataPoints.size() < 2) {
-            return BigDecimal.ZERO;
+            return 0.0;
         }
-        BigDecimal minY = dataPoints.get(0).getY();
-        BigDecimal maxY = dataPoints.get(0).getY();
-        BigDecimal totalVerticalDistance = BigDecimal.ZERO;
+        double minY = dataPoints.get(0).getY().doubleValue();
+        double maxY = dataPoints.get(0).getY().doubleValue();
+        double totalVerticalDistance = 0.0;
         for (int i = 1; i < dataPoints.size(); i++) {
-            UniPoint currentPoint = dataPoints.get(i);
-            UniPoint previousPoint = dataPoints.get(i - 1);
-            BigDecimal currentY = currentPoint.getY();
-            if (currentY.compareTo(minY) < 0) {
+            double currentY = dataPoints.get(i).getY().doubleValue();
+            double previousY = dataPoints.get(i - 1).getY().doubleValue();
+            if (currentY < minY) {
                 minY = currentY;
             }
-            if (currentY.compareTo(maxY) > 0) {
+            if (currentY > maxY) {
                 maxY = currentY;
             }
-            totalVerticalDistance = totalVerticalDistance.add(currentY.subtract(previousPoint.getY()).abs());
+            totalVerticalDistance += Math.abs(currentY - previousY);
         }
-        BigDecimal verticalRange = maxY.subtract(minY);
-        if (verticalRange.compareTo(BigDecimal.ZERO) == 0) {
-            return BigDecimal.ZERO; // Horizontal line, no volatility.
+        double verticalRange = maxY - minY;
+        if (verticalRange == 0.0) {
+            return 0.0; // Horizontal line, no volatility.
         }
-        return totalVerticalDistance.divide(verticalRange, 2, RoundingMode.HALF_UP);
+        return totalVerticalDistance / verticalRange;
     }
 }

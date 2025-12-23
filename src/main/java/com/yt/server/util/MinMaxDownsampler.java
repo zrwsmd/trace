@@ -3,9 +3,7 @@ package com.yt.server.util;
 import com.yt.server.entity.UniPoint;
 import org.apache.commons.collections.CollectionUtils;
 
-import java.math.BigDecimal;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -52,19 +50,25 @@ public class MinMaxDownsampler {
 
                 UniPoint minPoint = null;
                 UniPoint maxPoint = null;
+                double minY = Double.MAX_VALUE;
+                double maxY = -Double.MAX_VALUE;
 
                 for (int j = start; j < end; j++) {
                     UniPoint current = middleData.get(j);
-                    if (minPoint == null || current.getY().compareTo(minPoint.getY()) < 0) {
+                    double currentY = current.getY().doubleValue();
+                    if (minPoint == null || currentY < minY) {
                         minPoint = current;
+                        minY = currentY;
                     }
-                    if (maxPoint == null || current.getY().compareTo(maxPoint.getY()) > 0) {
+                    if (maxPoint == null || currentY > maxY) {
                         maxPoint = current;
+                        maxY = currentY;
                     }
                 }
 
                 if (minPoint != null) {
-                    if (minPoint.getX().compareTo(maxPoint.getX()) <= 0) {
+                    // Use doubleValue() for X comparison to avoid BigDecimal overhead
+                    if (minPoint.getX().doubleValue() <= maxPoint.getX().doubleValue()) {
                         sampledPoints.add(minPoint);
                         if (minPoint != maxPoint) {
                             sampledPoints.add(maxPoint);
