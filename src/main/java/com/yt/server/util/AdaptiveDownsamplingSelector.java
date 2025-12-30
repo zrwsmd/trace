@@ -40,7 +40,9 @@ public class AdaptiveDownsamplingSelector {
      * 主入口：自适应降采样
      */
     public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount) {
-        if (CollectionUtils.isEmpty(dataPoints) || dataPoints.size() <= targetCount || targetCount <= 0) {
+        // 🔥 核心改进：根据 LTTB 源码，目标点数必须 <= 总点数 - 2
+        // 如果点数已经很接近目标了，直接返回原始数据，没必要降采样
+        if (CollectionUtils.isEmpty(dataPoints) || dataPoints.size() <= targetCount + 2 || targetCount <= 0) {
             return dataPoints;
         }
 
@@ -783,7 +785,8 @@ public class AdaptiveDownsamplingSelector {
         if (size == 0) {
             return Collections.emptyList();
         }
-        if (targetCount >= size || targetCount <= 0) {
+        // 🔥 全局兜底：如果点数不足以支撑降采样，直接返回
+        if (size <= targetCount + 2) {
             return new ArrayList<>(data);
         }
         if (targetCount < 2) {
@@ -901,8 +904,9 @@ public class AdaptiveDownsamplingSelector {
             segmentTarget = Math.max(2, segmentTarget);
 
             List<UniPoint> segmentResult;
-            if (segmentTarget >= segment.size()) {
-                // 🔥 安全检查：如果目标点数大于等于输入点数，直接返回原始段，避免 LTTB 抛出异常
+            // 🔥 根据 LTTB 源码：bucketSize = (inputSize - 2) / desiredBuckets
+            // 必须满足 segment.size() - 2 >= segmentTarget，否则 bucketSize 为 0
+            if (segment.size() <= segmentTarget + 2) {
                 segmentResult = new ArrayList<>(segment);
             } else {
                 segmentResult = LTThreeBuckets.sorted(segment, segmentTarget);
