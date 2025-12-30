@@ -56,9 +56,14 @@ public class AdaptiveDownsamplingSelector {
      * 基于窗口的降采样（大数据集）
      */
     private static List<UniPoint> windowBasedDownsampling(List<UniPoint> dataPoints, int targetCount) {
-        List<UniPoint> result = new ArrayList<>(targetCount);
         int totalPoints = dataPoints.size();
         int numWindows = (int) Math.ceil((double) totalPoints / WINDOW_SIZE);
+
+        // 第一阶段：分析所有窗口，计算权重
+        double[] weights = new double[numWindows];
+        SignalType[] signalTypes = new SignalType[numWindows];
+        SignalFeatures[] allFeatures = new SignalFeatures[numWindows];
+        double totalWeightedSize = 0;
 
         for (int i = 0; i < numWindows; i++) {
             int start = i * WINDOW_SIZE;
@@ -67,18 +72,46 @@ public class AdaptiveDownsamplingSelector {
 
             if (windowData.isEmpty()) continue;
 
-            // 按比例分配目标点数
-            int windowTargetCount = (int) Math.round((double) targetCount * windowData.size() / totalPoints);
-            windowTargetCount = Math.max(2, windowTargetCount);
+            SignalFeatures features = extractFeatures(windowData);
+            SignalType type = classifySignal(features);
 
-            List<UniPoint> windowResult = selectAndApplyAlgorithm(windowData, windowTargetCount);
+            double weight = calculateWindowWeight(type, features);
 
-            // 避免边界重复
+            allFeatures[i] = features;
+            signalTypes[i] = type;
+            weights[i] = weight;
+            totalWeightedSize += weight * windowData.size();
+        }
+
+        // 第二阶段：分发点数并执行算法
+        List<UniPoint> result = new ArrayList<>(targetCount);
+        for (int i = 0; i < numWindows; i++) {
+            int start = i * WINDOW_SIZE;
+            int end = Math.min(start + WINDOW_SIZE, totalPoints);
+            List<UniPoint> windowData = dataPoints.subList(start, end);
+
+            if (windowData.isEmpty()) continue;
+
+            // 基于权重的点数分配
+            int windowTargetCount = (int) Math.round(targetCount * (weights[i] * windowData.size()) / totalWeightedSize);
+
+            // 安全保底逻辑
+            windowTargetCount = applySafetyConstraints(windowTargetCount, signalTypes[i], allFeatures[i], windowData.size());
+
+            // 应用算法
+            DownsamplingAlgorithm algorithm = selectAlgorithm(signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
+            List<UniPoint> windowResult = applyAlgorithm(algorithm, windowData, windowTargetCount, allFeatures[i]);
+
+            // 避免边界重复 (使用高效的 subList)
             if (!result.isEmpty() && !windowResult.isEmpty()) {
                 UniPoint lastOfResult = result.get(result.size() - 1);
                 UniPoint firstOfWindow = windowResult.get(0);
                 if (pointsEqual(lastOfResult, firstOfWindow)) {
-                    windowResult.remove(0);
+                    if (windowResult.size() > 1) {
+                        windowResult = windowResult.subList(1, windowResult.size());
+                    } else {
+                        windowResult = Collections.emptyList();
+                    }
                 }
             }
 
@@ -86,6 +119,48 @@ public class AdaptiveDownsamplingSelector {
         }
 
         return result;
+    }
+
+    /**
+     * 计算窗口权重：劫富济贫的核心逻辑
+     */
+    private static double calculateWindowWeight(SignalType type, SignalFeatures features) {
+        switch (type) {
+            case FLAT:
+                return 0.05; // 平稳信号几乎不占点
+            case LINEAR:
+                return 0.2;  // 线性趋势占点较少
+            case PERIODIC:
+                // 周期信号需求随波动率指数级增长
+                return Math.pow(features.volatility, 3.0);
+            case STEP:
+            case PULSE:
+                return 2.0;  // 阶跃和脉冲需要额外关注边缘特征
+            case NOISE:
+            case TREND_NOISE:
+            case COMPLEX:
+                return Math.max(1.0, features.volatility);
+            default:
+                return 1.0;
+        }
+    }
+
+    /**
+     * 安全保底：确保关键信号不因为总配额少而消失
+     */
+    private static int applySafetyConstraints(int count, SignalType type, SignalFeatures features, int windowSize) {
+        if (type == SignalType.FLAT) return Math.max(2, count);
+
+        int minCount;
+        if (type == SignalType.PERIODIC || type == SignalType.COMPLEX) {
+            // 震荡信号保底密度：256个点至少给25个点，512个点至少给50个点
+            minCount = Math.max(15, windowSize / 10);
+        } else if (type == SignalType.STEP || type == SignalType.PULSE) {
+            minCount = 10;
+        } else {
+            minCount = 2;
+        }
+        return Math.max(minCount, count);
     }
 
     /**
