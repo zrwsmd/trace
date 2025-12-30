@@ -105,7 +105,7 @@ public class AdaptiveDownsamplingSelector {
             );
 
             // 🔥 周期信号特殊处理：保证最小采样密度
-            if (signalTypes[i] == SignalType.PERIODIC) {
+            if (signalTypes[i] == SignalType.PERIODIC || signalTypes[i] == SignalType.AMPLITUDE_MODULATED) {
                 int estimatedCycles = estimateCycleCount(allFeatures[i], windowData.size());
                 int minRequired = Math.max(MIN_SAMPLES_PER_CYCLE * estimatedCycles, 30);
                 windowTargetCount = Math.max(windowTargetCount, minRequired);
@@ -157,7 +157,9 @@ public class AdaptiveDownsamplingSelector {
         double spikeBonus = (type == SignalType.STEP || type == SignalType.PULSE) ? 1.5 : 0.0;
 
         // 4. 周期性偏置：如果是周期信号，给予一个稳定的基础权重，确保波形连续
-        double periodicityBonus = features.periodicity * 0.8;
+        double periodicityBonus = (type == SignalType.PERIODIC || type == SignalType.AMPLITUDE_MODULATED)
+                ? features.periodicity * 0.8
+                : 0.0;
 
         // 综合得分，最低不低于 0.1 (FLAT)，最高不封顶
         return Math.max(0.1, importance + complexityBonus + spikeBonus + periodicityBonus);
@@ -184,7 +186,7 @@ public class AdaptiveDownsamplingSelector {
         }
 
         int minCount;
-        if (type == SignalType.PERIODIC || type == SignalType.COMPLEX) {
+        if (type == SignalType.PERIODIC || type == SignalType.AMPLITUDE_MODULATED || type == SignalType.COMPLEX) {
             // 🔥 周期信号：至少 windowSize / 5（从1/8提升到1/5）
             minCount = Math.max(30, windowSize / 5);
         } else if (type == SignalType.STEP || type == SignalType.PULSE) {
@@ -248,6 +250,18 @@ public class AdaptiveDownsamplingSelector {
         int zeroCrossings;
         double maxAbsDerivative;
         double estimatedPeriod;         // 🔥 估计的周期长度（新增）
+        double residualStdDev;
+        double detrendedRange;
+        double trendStrength;
+        double envelopeGrowthRatio;
+    }
+
+    static class TrendInfo {
+        double slope;
+        double intercept;
+        List<Double> residuals = Collections.emptyList();
+        double residualRange;
+        double residualStdDev;
     }
 
     /**
@@ -273,24 +287,32 @@ public class AdaptiveDownsamplingSelector {
         features.stdDev = Math.sqrt(Math.max(0, sumSquare / n - features.mean * features.mean));
         features.range = max - min;
 
+        TrendInfo trendInfo = calculateTrendInfo(data);
+
         // 🔥 核心改进：分别计算绝对和归一化波动率
         features.volatility = calculateVolatility(data, features.range);
-        features.normalizedVolatility = calculateNormalizedVolatility(data);
+        features.normalizedVolatility = calculateNormalizedVolatility(trendInfo.residuals);
 
         features.flatness = features.range < 1e-6 ? 0.0 : features.stdDev / features.range;
         features.linearity = calculateLinearity(data);
 
         // 🔥 核心改进：周期性检测返回周期长度
-        PeriodInfo periodInfo = detectPeriodicity(data);
+        PeriodInfo periodInfo = detectPeriodicity(trendInfo.residuals);
         features.periodicity = periodInfo.strength;
         features.estimatedPeriod = periodInfo.period;
 
         features.autocorrelation = calculateAutocorrelation(data, Math.max(1, n / 4));
         features.stepCount = detectSteps(data);
-        features.trendSlope = calculateTrendSlope(data);
+        features.trendSlope = trendInfo.slope;
         features.noiseRatio = calculateNoiseRatio(data);
         features.zeroCrossings = countZeroCrossings(data, features.mean);
         features.maxAbsDerivative = calculateMaxAbsDerivative(data);
+        features.residualStdDev = trendInfo.residualStdDev;
+        features.detrendedRange = trendInfo.residualRange;
+        features.trendStrength = features.range < 1e-6 ? 0.0 :
+                Math.min(1.0, Math.abs(trendInfo.slope) * n / (features.range + 1e-6));
+        features.envelopeGrowthRatio = trendInfo.residualRange < 1e-6 ? 0.0 :
+                Math.min(10.0, features.range / (trendInfo.residualRange + 1e-6));
 
         return features;
     }
@@ -298,15 +320,17 @@ public class AdaptiveDownsamplingSelector {
     /**
      * 🔥 新增：归一化波动率（对振幅不敏感）
      */
-    private static double calculateNormalizedVolatility(List<UniPoint> data) {
-        if (data.size() < 2) return 0.0;
+    private static double calculateNormalizedVolatility(List<Double> values) {
+        if (values == null || values.size() < 2) {
+            return 0.0;
+        }
 
         // 计算归一化一阶差分
         List<Double> normalizedDiffs = new ArrayList<>();
 
-        for (int i = 1; i < data.size(); i++) {
-            double y0 = data.get(i - 1).getY().doubleValue();
-            double y1 = data.get(i).getY().doubleValue();
+        for (int i = 1; i < values.size(); i++) {
+            double y0 = values.get(i - 1);
+            double y1 = values.get(i);
 
             // 避免除零
             double avg = (Math.abs(y0) + Math.abs(y1)) / 2.0;
@@ -337,6 +361,65 @@ public class AdaptiveDownsamplingSelector {
         return totalDistance / range;
     }
 
+    private static TrendInfo calculateTrendInfo(List<UniPoint> data) {
+        TrendInfo info = new TrendInfo();
+        int n = data.size();
+        if (n == 0) {
+            info.residuals = Collections.emptyList();
+            return info;
+        }
+        if (n == 1) {
+            info.slope = 0.0;
+            info.intercept = data.get(0).getY().doubleValue();
+            info.residuals = Collections.singletonList(0.0);
+            info.residualRange = 0.0;
+            info.residualStdDev = 0.0;
+            return info;
+        }
+
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        for (int i = 0; i < n; i++) {
+            double x = i;
+            double y = data.get(i).getY().doubleValue();
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+        }
+        double denominator = n * sumX2 - sumX * sumX;
+        if (Math.abs(denominator) < 1e-6) {
+            info.slope = 0.0;
+            info.intercept = sumY / n;
+        } else {
+            info.slope = (n * sumXY - sumX * sumY) / denominator;
+            info.intercept = (sumY - info.slope * sumX) / n;
+        }
+
+        List<Double> residuals = new ArrayList<>(n);
+        double minResidual = Double.POSITIVE_INFINITY;
+        double maxResidual = Double.NEGATIVE_INFINITY;
+        double residualSum = 0.0;
+        double residualSumSquare = 0.0;
+        for (int i = 0; i < n; i++) {
+            double fitted = info.slope * i + info.intercept;
+            double residual = data.get(i).getY().doubleValue() - fitted;
+            residuals.add(residual);
+            minResidual = Math.min(minResidual, residual);
+            maxResidual = Math.max(maxResidual, residual);
+            residualSum += residual;
+            residualSumSquare += residual * residual;
+        }
+        info.residuals = residuals;
+        if (minResidual == Double.POSITIVE_INFINITY) {
+            info.residualRange = 0.0;
+        } else {
+            info.residualRange = maxResidual - minResidual;
+        }
+        double meanResidual = residualSum / n;
+        info.residualStdDev = Math.sqrt(Math.max(0, residualSumSquare / n - meanResidual * meanResidual));
+        return info;
+    }
+
     /**
      * 🔥 周期信息结构
      */
@@ -349,9 +432,9 @@ public class AdaptiveDownsamplingSelector {
      * 🔥 核心改进：增强的周期性检测（v3.1优化）
      * 先归一化，再做自相关，增加鲁棒性
      */
-    private static PeriodInfo detectPeriodicity(List<UniPoint> data) {
+    private static PeriodInfo detectPeriodicity(List<Double> values) {
         PeriodInfo info = new PeriodInfo();
-        int n = data.size();
+        int n = values.size();
 
         if (n < 10) {
             info.strength = 0.0;
@@ -360,7 +443,7 @@ public class AdaptiveDownsamplingSelector {
         }
 
         // 🔥 归一化数据（去除振幅影响）
-        List<Double> normalized = normalizeSignal(data);
+        List<Double> normalized = normalizeSignal(values);
 
         double maxCorr = 0;
         int bestLag = 0;
@@ -395,43 +478,37 @@ public class AdaptiveDownsamplingSelector {
     /**
      * 🔥 信号归一化（v3.1增强：更鲁棒的处理）
      */
-    private static List<Double> normalizeSignal(List<UniPoint> data) {
-        // 计算均值和标准差
-        double mean = data.stream()
-                .mapToDouble(p -> p.getY().doubleValue())
+    private static List<Double> normalizeSignal(List<Double> values) {
+        double mean = values.stream()
+                .mapToDouble(Double::doubleValue)
                 .average()
                 .orElse(0);
 
-        double variance = data.stream()
-                .mapToDouble(p -> Math.pow(p.getY().doubleValue() - mean, 2))
+        double variance = values.stream()
+                .mapToDouble(v -> Math.pow(v - mean, 2))
                 .average()
                 .orElse(0);
 
         double stdDev = Math.sqrt(variance);
 
-        // 🔥 v3.1：更鲁棒的处理
-        // 如果stdDev太小（平稳信号），返回去均值后的信号
         if (stdDev < 1e-6) {
-            List<Double> normalized = new ArrayList<>(data.size());
-            for (UniPoint point : data) {
-                normalized.add(point.getY().doubleValue() - mean);
+            List<Double> normalized = new ArrayList<>(values.size());
+            for (Double value : values) {
+                normalized.add(value - mean);
             }
             return normalized;
         }
 
-        // 标准化：(x - mean) / stdDev
-        List<Double> normalized = new ArrayList<>(data.size());
-        for (UniPoint point : data) {
-            double y = point.getY().doubleValue();
-            double normValue = (y - mean) / stdDev;
-
-            // 🔥 防止异常值影响：限制在[-10, 10]范围内
+        List<Double> normalized = new ArrayList<>(values.size());
+        for (Double value : values) {
+            double normValue = (value - mean) / stdDev;
             normValue = Math.max(-10.0, Math.min(10.0, normValue));
             normalized.add(normValue);
         }
 
         return normalized;
     }
+
 
     /**
      * 归一化数据的自相关
@@ -561,27 +638,6 @@ public class AdaptiveDownsamplingSelector {
         return stepCount;
     }
 
-    // 趋势斜率（保持不变）
-    private static double calculateTrendSlope(List<UniPoint> data) {
-        int n = data.size();
-        if (n < 2) return 0.0;
-
-        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-
-        for (int i = 0; i < n; i++) {
-            double x = i;
-            double y = data.get(i).getY().doubleValue();
-            sumX += x;
-            sumY += y;
-            sumXY += x * y;
-            sumX2 += x * x;
-        }
-
-        double denominator = n * sumX2 - sumX * sumX;
-        return Math.abs(denominator) < 1e-6 ? 0.0 :
-                (n * sumXY - sumX * sumY) / denominator;
-    }
-
     // 噪声比例（保持不变）
     private static double calculateNoiseRatio(List<UniPoint> data) {
         if (data.size() < 3) return 0.0;
@@ -635,7 +691,7 @@ public class AdaptiveDownsamplingSelector {
     // ==================== 信号分类 ====================
 
     enum SignalType {
-        FLAT, LINEAR, PERIODIC, STEP, NOISE, PULSE, TREND_NOISE, COMPLEX
+        FLAT, LINEAR, PERIODIC, AMPLITUDE_MODULATED, STEP, NOISE, PULSE, TREND_NOISE, COMPLEX
     }
 
     /**
@@ -652,6 +708,9 @@ public class AdaptiveDownsamplingSelector {
 
         // 🔥 周期性判断优先级提高
         if (features.periodicity > PERIODICITY_THRESHOLD) {
+            if (features.envelopeGrowthRatio > 1.5 && Math.abs(features.trendSlope) > 0.01) {
+                return SignalType.AMPLITUDE_MODULATED;
+            }
             return SignalType.PERIODIC;
         }
 
@@ -700,6 +759,9 @@ public class AdaptiveDownsamplingSelector {
         // 中低压缩比场景
         switch (signalType) {
             case PERIODIC:
+                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
+            case AMPLITUDE_MODULATED:
+                return DownsamplingAlgorithm.MIN_MAX;
             case COMPLEX:
             case TREND_NOISE:
                 // 复杂信号使用 ADAPTIVE_LTTB (它会在内部做二次分段加权)
