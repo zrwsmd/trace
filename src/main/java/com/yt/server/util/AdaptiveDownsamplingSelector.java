@@ -64,7 +64,6 @@ public class AdaptiveDownsamplingSelector {
         SignalType[] signalTypes = new SignalType[numWindows];
         SignalFeatures[] allFeatures = new SignalFeatures[numWindows];
         double totalWeightedSize = 0;
-
         for (int i = 0; i < numWindows; i++) {
             int start = i * WINDOW_SIZE;
             int end = Math.min(start + WINDOW_SIZE, totalPoints);
