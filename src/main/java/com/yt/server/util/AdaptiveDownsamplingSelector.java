@@ -141,6 +141,10 @@ public class AdaptiveDownsamplingSelector {
             result.addAll(windowResult);
         }
 
+        if (result.size() > targetCount) {
+            // 窗口拼接后数量仍超标，退回到直接的自适应降采样以满足 reqNum
+            return selectAndApplyAlgorithm(result, targetCount);
+        }
         return result;
     }
 
