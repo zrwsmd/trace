@@ -504,7 +504,7 @@ public class IoComposeServiceDatabase {
                         gap = uniPointList.size() / reqNum;
                         if (gap >= 1) {
                             //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
-                            uniPointList = DownsamplingAlgorithmSelector.downsample(uniPointList, reqNum);
+                            uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
 //                            logger.info("uniPointList大小为:{}", uniPointList.size());
@@ -604,7 +604,7 @@ public class IoComposeServiceDatabase {
                                 List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
                                 int bucketSize = singleVarDataList.size() / closestRate;
                                 if (bucketSize > 0) {
-                                    List<UniPoint> uniPoints = DownsamplingAlgorithmSelector.downsample(singleVarDataList, bucketSize);
+                                    List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize);
                                     uniPoint2Map(uniPoints, allMultiValueMap, mapList);
                                 }
 
@@ -740,10 +740,10 @@ public class IoComposeServiceDatabase {
             int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
             Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
             if (bucketSize > 0) {//够一定数量进行降采样
-                List<UniPoint> uniPoints = DownsamplingAlgorithmSelector.downsample(singleVarDataList, bucketSize);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize);
                 uniPoint2Map(uniPoints, allMultiValueMap, mapList);
             } else if (bucketSize == 0 && customDownsamplingRule != 1 && customDownsamplingRule <= singleVarDataList.size() && singleVarDataList.size() > 2) { //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
-                List<UniPoint> uniPoints = DownsamplingAlgorithmSelector.downsample(singleVarDataList, singleVarDataList.size() / customDownsamplingRule);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, singleVarDataList.size() / customDownsamplingRule);
                 uniPoint2Map(uniPoints, allMultiValueMap, mapList);
             } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0) {//数量少的话直接返回全量表数据
                 uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
@@ -1199,7 +1199,7 @@ public class IoComposeServiceDatabase {
         String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(gap * parentDownsamplingRate));
         downsamplingTableName = BaseUtils.earseLastPoint(downsamplingTableName);
         if (bucketSize > 0) {
-            downsamplingDataList = DownsamplingAlgorithmSelector.downsample(downsamplingDataList, bucketSize);
+            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize);
         }
         List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsamplingDataList, 2);
         BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);

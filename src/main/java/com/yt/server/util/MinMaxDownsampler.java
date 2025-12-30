@@ -22,9 +22,28 @@ public class MinMaxDownsampler {
      * @return A downsampled list of points containing roughly `threshold` points
      */
     public static List<UniPoint> downsample(List<UniPoint> data, int threshold) {
-        if (CollectionUtils.isEmpty(data) || threshold >= data.size() || threshold < 2) {
+        if (CollectionUtils.isEmpty(data) || threshold >= data.size()) {
             return data;
         }
+
+        // If threshold is very low for a large dataset, prioritize global extremes to show the envelope
+        if (threshold < 4 && data.size() > 10) {
+            List<UniPoint> extremes = new ArrayList<>();
+            UniPoint globalMin = data.get(0);
+            UniPoint globalMax = data.get(0);
+            for (UniPoint p : data) {
+                if (p.getY().doubleValue() < globalMin.getY().doubleValue()) globalMin = p;
+                if (p.getY().doubleValue() > globalMax.getY().doubleValue()) globalMax = p;
+            }
+            extremes.add(data.get(0));
+            if (globalMin != data.get(0) && globalMin != data.get(data.size() - 1)) extremes.add(globalMin);
+            if (globalMax != data.get(0) && globalMax != data.get(data.size() - 1) && globalMax != globalMin) extremes.add(globalMax);
+            extremes.add(data.get(data.size() - 1));
+            extremes.sort((p1, p2) -> p1.getX().compareTo(p2.getX()));
+            return extremes;
+        }
+
+        if (threshold < 2) return data.subList(0, 1);
 
         List<UniPoint> sampledPoints = new ArrayList<>(threshold);
         UniPoint firstPoint = data.get(0);
@@ -38,15 +57,17 @@ public class MinMaxDownsampler {
         int targetMiddleCount = threshold - 2;
 
         if (targetMiddleCount > 0 && !middleData.isEmpty()) {
+            // 充分利用每一个配额点。如果 targetMiddleCount 是 15，我们要尽量采出 15 个点。
+            // 传统 Min-Max 是成对采 (Min, Max)，所以我们分 bucketCount = targetMiddleCount / 2 个桶。
+            // 如果有余数，我们可以在最后一个桶多采一个点，或者增加一个单点桶。
             int bucketCount = Math.max(1, targetMiddleCount / 2);
             int dataSize = middleData.size();
-            int step = dataSize / bucketCount;
-            if (step < 1) step = 1;
+            double bucketWidth = (double) dataSize / bucketCount;
 
             for (int i = 0; i < bucketCount; i++) {
-                int start = i * step;
-                int end = Math.min((i + 1) * step, dataSize);
-                if (start >= end) break;
+                int start = (int) (i * bucketWidth);
+                int end = (int) Math.min((i + 1) * bucketWidth, dataSize);
+                if (start >= end) continue;
 
                 UniPoint minPoint = null;
                 UniPoint maxPoint = null;
@@ -67,15 +88,17 @@ public class MinMaxDownsampler {
                 }
 
                 if (minPoint != null) {
-                    // Use doubleValue() for X comparison to avoid BigDecimal overhead
+                    // 保持 X 轴有序
                     if (minPoint.getX().doubleValue() <= maxPoint.getX().doubleValue()) {
                         sampledPoints.add(minPoint);
-                        if (minPoint != maxPoint) {
+                        if (minPoint != maxPoint && sampledPoints.size() < threshold - 1) {
                             sampledPoints.add(maxPoint);
                         }
                     } else {
                         sampledPoints.add(maxPoint);
-                        sampledPoints.add(minPoint);
+                        if (minPoint != maxPoint && sampledPoints.size() < threshold - 1) {
+                            sampledPoints.add(minPoint);
+                        }
                     }
                 }
             }

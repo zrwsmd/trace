@@ -15,8 +15,8 @@ import java.util.List;
 public class DownsamplingAlgorithmSelector {
 
     private static final Logger logger = LoggerFactory.getLogger(DownsamplingAlgorithmSelector.class);
-    private static final double THRESHOLD = 2.0;
-    private static final int WINDOW_SIZE = 512;
+    private static final double THRESHOLD = 0.5; // 大幅降低阈值，捕获更多微小波动
+    private static final int WINDOW_SIZE = 256; // 缩减窗口大小，提高对局部特征的敏感度
 
     /**
      * Downsamples a list of points by dynamically choosing between LTTB and Min-Max algorithms.
@@ -31,74 +31,79 @@ public class DownsamplingAlgorithmSelector {
             return dataPoints;
         }
 
-        // If data size is small enough, or target count is very small, use single algorithm mode
-        // to avoid overhead of splitting.
-        if (dataPoints.size() <= WINDOW_SIZE || targetCount < (dataPoints.size() / WINDOW_SIZE) * 2) {
+        if (dataPoints.size() <= WINDOW_SIZE) {
             return executeSingleAlgorithm(dataPoints, targetCount);
         }
 
-        List<UniPoint> finalResult = new ArrayList<>(targetCount);
         int totalPoints = dataPoints.size();
-
-        // Split data into windows
         int numWindows = (int) Math.ceil((double) totalPoints / WINDOW_SIZE);
+
+        // First pass: Calculate volatility and weight for each window
+        double[] volatilities = new double[numWindows];
+        double[] weights = new double[numWindows];
+        double totalWeightedSize = 0;
 
         for (int i = 0; i < numWindows; i++) {
             int start = i * WINDOW_SIZE;
             int end = Math.min(start + WINDOW_SIZE, totalPoints);
             List<UniPoint> windowData = dataPoints.subList(start, end);
 
-            if (windowData.isEmpty()) continue;
+            double v = calculateVolatilityIndex(windowData);
+            volatilities[i] = v;
 
-            /**
-             * 根据窗口的数据量占比，按比例分配降采样后的点数配额。
-             *   假设：
-             *   - 总数据量 (totalPoints): 4096 个点
-             *   - 总目标点数 (targetCount): 256 个点（我们希望最终降采样成 256 个点）
-             *   - 窗口大小: 假设我们切分的一个窗口里有 512 个点（windowData.size() = 512）
-             *   我们想知道：这个窗口里的 512 个原始点，应该变成多少个结果点？
-             *   计算过程：
-             *   1. 计算占比:
-             *   这个窗口占总数据量的比例是：
-             *   512 / 4096 = 0.125 (也就是 1/8)
-             *   2. 分配配额:
-             *   既然原始数据占总量的 1/8，那么它产生的结果点数也应该占总目标点数的 1/8，这样时间轴的密度才是均匀的。
-             *   256 * 0.125 = 32 个点
-             *
-             *   代码翻译：
-             *
-             *   // Math.round(...) 是四舍五入取整
-             *   int windowTargetCount = (int) Math.round(
-             *       (double) targetCount  // 256
-             *       * windowData.size()   // * 512
-             *       / totalPoints         // / 4096
-             *   );
-             *   // 结果 = 32
-             *
-             *   如果不这样做会怎样？
-             *   如果我们简单粗暴地给每个窗口固定分配点数，或者分配不均，会导致最后生成的图表有的地方很稀疏（点很少），有的地方很密集（点很多），时间轴看起来就会忽快忽慢，
-             *   视觉效果很差。按比例分配能保证数据密度的一致性。
-             */
-            int windowTargetCount = (int) Math.round((double) targetCount * windowData.size() / totalPoints);
-            // Ensure at least 2 points (start and end) unless quota is extremely small
-            if (windowTargetCount < 2) windowTargetCount = 2;
+            // Calculate weight based on complexity
+            double weight;
+            if (v == 0) {
+                weight = 0.05; // 水平线只需要极少的点 (2个点)
+            } else if (v <= 0.3) {
+                weight = 0.1;  // 极平缓趋势
+            } else if (v <= THRESHOLD) {
+                weight = 1.0;  // 普通趋势数据 (LTTB)
+            } else {
+                // 使用 4 次方权重增长，极大幅度地向高频震荡区域倾斜配额。
+                // 不再设置硬性上限，让震荡区域能够真正“抢到”足够的点数。
+                weight = Math.pow(v, 4.0);
+            }
+            weights[i] = weight;
+            totalWeightedSize += weight * windowData.size();
+        }
 
-            // Execute downsampling for this window
-            List<UniPoint> windowResult = executeSingleAlgorithm(windowData, windowTargetCount);
+        // Second pass: Distribute targetCount based on weights and execute
+        List<UniPoint> finalResult = new ArrayList<>(targetCount);
+        for (int i = 0; i < numWindows; i++) {
+            int start = i * WINDOW_SIZE;
+            int end = Math.min(start + WINDOW_SIZE, totalPoints);
+            List<UniPoint> windowData = dataPoints.subList(start, end);
 
-            // Add to final result
-            // Note: Simple addAll might duplicate boundary points between windows.
-            // However, LTTB/MinMax usually preserve exact start/end points.
-            // To be safe and clean, we could check for duplicates, but standard addAll is acceptable
-            // as downstream usually handles time-ordered points well.
-            // For strictness: if finalResult not empty and last point equals new first point, remove one.
+            // Calculate weighted quota for this window
+            int windowTargetCount = (int) Math.round(targetCount * (weights[i] * windowData.size()) / totalWeightedSize);
+
+            // Safety constraints (强力保底策略)
+            if (volatilities[i] > THRESHOLD) {
+                // 震荡数据必须保证采样密度。
+                // 至少给 windowData.size() / 8 的采样率（例如 256个点至少采 32 个点）。
+                int minQuota = Math.max(20, windowData.size() / 8);
+                if (windowTargetCount < minQuota) windowTargetCount = minQuota;
+
+                // 如果极度波动 (v > 4.0)，采样密度要求更高。
+                if (volatilities[i] > 4.0) {
+                    int extremeQuota = Math.max(40, windowData.size() / 4);
+                    if (windowTargetCount < extremeQuota) windowTargetCount = extremeQuota;
+                }
+            } else if (volatilities[i] > 0) {
+                if (windowTargetCount < 2) windowTargetCount = 2;
+            }
+
+            List<UniPoint> windowResult = executeSingleAlgorithm(windowData, windowTargetCount, volatilities[i]);
+
+            // Merge results
             if (!finalResult.isEmpty() && !windowResult.isEmpty()) {
-                 UniPoint lastOfFinal = finalResult.get(finalResult.size() - 1);
-                 UniPoint firstOfWindow = windowResult.get(0);
-                 if (lastOfFinal.getX().compareTo(firstOfWindow.getX()) == 0 &&
-                     lastOfFinal.getY().compareTo(firstOfWindow.getY()) == 0) {
-                     windowResult.remove(0); // Avoid duplicate boundary point
-                 }
+                UniPoint lastOfFinal = finalResult.get(finalResult.size() - 1);
+                UniPoint firstOfWindow = windowResult.get(0);
+                if (lastOfFinal.getX().compareTo(firstOfWindow.getX()) == 0 &&
+                        lastOfFinal.getY().compareTo(firstOfWindow.getY()) == 0) {
+                    windowResult = windowResult.subList(1, windowResult.size());
+                }
             }
             finalResult.addAll(windowResult);
         }
@@ -107,14 +112,11 @@ public class DownsamplingAlgorithmSelector {
     }
 
     private static List<UniPoint> executeSingleAlgorithm(List<UniPoint> dataPoints, int targetCount) {
-        double volatilityIndex = calculateVolatilityIndex(dataPoints);
+        return executeSingleAlgorithm(dataPoints, targetCount, calculateVolatilityIndex(dataPoints));
+    }
 
-        // Optimization 4: Fast path for horizontal lines
-        /**
-         - 判断条件: 如果一个数据窗口的波动指数为 0（且至少包含 2 个点），说明该窗口内所有点的 Y 值完全一致，是一条水平直线。
-         - 优化操作: 直接返回该窗口的第一个点和最后一个点，完全跳过后续复杂的 LTTB 或 Min-Max 算法计算。
-         - 收益: 对于包含大量平稳段（水平线）的数据集，该优化能显著降低 CPU 消耗并提升处理速度。
-         */
+    private static List<UniPoint> executeSingleAlgorithm(List<UniPoint> dataPoints, int targetCount, double volatilityIndex) {
+        // Fast path for horizontal lines
         if (volatilityIndex == 0.0 && dataPoints.size() >= 2) {
             List<UniPoint> result = new ArrayList<>(2);
             result.add(dataPoints.get(0));
@@ -123,10 +125,8 @@ public class DownsamplingAlgorithmSelector {
         }
 
         if (volatilityIndex > THRESHOLD) {
-            // logger.debug("Volatility index ({}) > threshold ({}). Using Min-Max downsampling.", volatilityIndex, THRESHOLD);
             return MinMaxDownsampler.downsample(dataPoints, targetCount);
         } else {
-            // logger.debug("Volatility index ({}) <= threshold ({}). Using LTTB downsampling.", volatilityIndex, THRESHOLD);
             return LTThreeBuckets.sorted(dataPoints, targetCount);
         }
     }
