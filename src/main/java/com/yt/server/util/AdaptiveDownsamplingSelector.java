@@ -779,6 +779,16 @@ public class AdaptiveDownsamplingSelector {
             DownsamplingAlgorithm algorithm, List<UniPoint> data,
             int targetCount, SignalFeatures features
     ) {
+        int size = data.size();
+        if (size == 0) {
+            return Collections.emptyList();
+        }
+        if (targetCount >= size || targetCount <= 0) {
+            return new ArrayList<>(data);
+        }
+        if (targetCount < 2) {
+            targetCount = 2;
+        }
         switch (algorithm) {
             case KEEP_FIRST_LAST:
                 return keepFirstLast(data);
