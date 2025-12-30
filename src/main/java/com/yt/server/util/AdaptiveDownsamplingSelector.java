@@ -189,8 +189,8 @@ public class AdaptiveDownsamplingSelector {
 
         int minCount;
         if (type == SignalType.PERIODIC || type == SignalType.AMPLITUDE_MODULATED || type == SignalType.COMPLEX) {
-            // 🔥 周期信号：至少 windowSize / 5（从1/8提升到1/5）
-            minCount = Math.max(30, windowSize / 5);
+            // 🔥 周期信号：至少 windowSize / 4，防止高振幅信号被过度抽稀
+            minCount = Math.max(30, windowSize / 4);
         } else if (type == SignalType.STEP || type == SignalType.PULSE) {
             minCount = 15;  // 从10提升到15
         } else {
@@ -761,9 +761,8 @@ public class AdaptiveDownsamplingSelector {
         // 中低压缩比场景
         switch (signalType) {
             case PERIODIC:
-                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
             case AMPLITUDE_MODULATED:
-                return DownsamplingAlgorithm.MIN_MAX;
+                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
             case COMPLEX:
             case TREND_NOISE:
                 // 复杂信号使用 ADAPTIVE_LTTB (它会在内部做二次分段加权)
