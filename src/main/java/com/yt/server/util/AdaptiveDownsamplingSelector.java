@@ -31,10 +31,10 @@ public class AdaptiveDownsamplingSelector {
     private static final double NOISE_RATIO_THRESHOLD = 0.5;
 
     // 🔥 周期信号特殊处理：每个周期至少保证的采样点数
-    private static final int MIN_SAMPLES_PER_CYCLE = 12;  // 从8提升到12
+    private static final int MIN_SAMPLES_PER_CYCLE = 16;  // 从12提升到16
 
-    // 🔥 全局最小密度保护（防止空白区域）
-    private static final double MIN_DENSITY_RATIO = 0.015;  // 至少保留1.5%的点
+    // 🔥 全局最小密度保护
+    private static final double MIN_DENSITY_RATIO = 0.01;  // 回归到1%，通用保底
 
     /**
      * 主入口：自适应降采样
@@ -143,38 +143,24 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 核心改进：归一化权重计算（v3.1调整）
-     * 关键：周期信号不受振幅影响，且获得更高优先级
+     * 🔥 归一化权重计算 (v5.0 通用版)
+     * 不再依赖单一分类，而是基于综合特征评分
      */
     private static double calculateNormalizedWeight(SignalType type, SignalFeatures features) {
-        switch (type) {
-            case FLAT:
-                return 0.05;
+        // 1. 基础重要性：波动越大，信息熵越高
+        double importance = features.normalizedVolatility * 1.5;
 
-            case LINEAR:
-                return 0.2;
+        // 2. 形状复杂度加成：非线性的、非平坦的信号需要更多点
+        double complexityBonus = (1.0 - features.linearity) * 0.5 + (1.0 - features.flatness) * 0.3;
 
-            case PERIODIC:
-                // 🔥 v3.1：提高周期信号的基础权重
-                // 确保即使在资源紧张时也能保持足够密度
-                double baseWeight = 1.2;  // 从0.8提升到1.2
-                double volatilityBonus = Math.min(0.8, features.normalizedVolatility * 0.5);
-                return baseWeight + volatilityBonus;  // 范围 [1.2, 2.0]
+        // 3. 突变加成：检测到阶跃或脉冲时，大幅提高优先级以保护边缘
+        double spikeBonus = (type == SignalType.STEP || type == SignalType.PULSE) ? 1.5 : 0.0;
 
-            case STEP:
-            case PULSE:
-                return 2.0;
+        // 4. 周期性偏置：如果是周期信号，给予一个稳定的基础权重，确保波形连续
+        double periodicityBonus = features.periodicity * 0.8;
 
-            case NOISE:
-            case TREND_NOISE:
-                return Math.max(1.0, features.normalizedVolatility);
-
-            case COMPLEX:
-                return Math.max(1.2, features.normalizedVolatility * 1.2);
-
-            default:
-                return 1.0;
-        }
+        // 综合得分，最低不低于 0.1 (FLAT)，最高不封顶
+        return Math.max(0.1, importance + complexityBonus + spikeBonus + periodicityBonus);
     }
 
     /**
@@ -698,25 +684,32 @@ public class AdaptiveDownsamplingSelector {
     private static DownsamplingAlgorithm selectAlgorithm(
             SignalType signalType, SignalFeatures features, int inputSize, int targetSize
     ) {
+        double compression = (double) inputSize / targetSize;
+
+        // 通用策略：基于压缩比和信号复杂度决策
+        if (features.flatness < FLATNESS_THRESHOLD) {
+            return DownsamplingAlgorithm.KEEP_FIRST_LAST;
+        }
+
+        // 高压缩比场景 (>10)
+        if (compression > 10.0) {
+            // 只要不是纯线性的，都优先保证包络 (MIN_MAX)
+            return (features.linearity > 0.99) ? DownsamplingAlgorithm.LTTB : DownsamplingAlgorithm.MIN_MAX;
+        }
+
+        // 中低压缩比场景
         switch (signalType) {
-            case FLAT:
-                return DownsamplingAlgorithm.KEEP_FIRST_LAST;
-            case LINEAR:
-                return targetSize < 3 ?
-                        DownsamplingAlgorithm.KEEP_FIRST_LAST : DownsamplingAlgorithm.LTTB;
             case PERIODIC:
-                return DownsamplingAlgorithm.LTTB;  // LTTB对周期信号效果好
+            case COMPLEX:
+            case TREND_NOISE:
+                // 复杂信号使用 ADAPTIVE_LTTB (它会在内部做二次分段加权)
+                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
             case STEP:
             case PULSE:
                 return DownsamplingAlgorithm.PEAK_DETECTION;
-            case NOISE:
-                return DownsamplingAlgorithm.MIN_MAX;
-            case TREND_NOISE:
-                return (double) inputSize / targetSize > 10 ?
-                        DownsamplingAlgorithm.MIN_MAX : DownsamplingAlgorithm.LTTB;
-            case COMPLEX:
+            case LINEAR:
             default:
-                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
+                return DownsamplingAlgorithm.LTTB;
         }
     }
 
