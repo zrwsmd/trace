@@ -900,7 +900,13 @@ public class AdaptiveDownsamplingSelector {
             );
             segmentTarget = Math.max(2, segmentTarget);
 
-            List<UniPoint> segmentResult = LTThreeBuckets.sorted(segment, segmentTarget);
+            List<UniPoint> segmentResult;
+            if (segmentTarget >= segment.size()) {
+                // 🔥 安全检查：如果目标点数大于等于输入点数，直接返回原始段，避免 LTTB 抛出异常
+                segmentResult = new ArrayList<>(segment);
+            } else {
+                segmentResult = LTThreeBuckets.sorted(segment, segmentTarget);
+            }
 
             if (!result.isEmpty() && !segmentResult.isEmpty()) {
                 if (pointsEqual(result.get(result.size() - 1), segmentResult.get(0))) {
