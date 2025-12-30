@@ -142,8 +142,7 @@ public class AdaptiveDownsamplingSelector {
         }
 
         if (result.size() > targetCount) {
-            // 窗口拼接后数量仍超标，退回到直接的自适应降采样以满足 reqNum
-            return selectAndApplyAlgorithm(result, targetCount);
+            return balancedUniformTrim(result, targetCount);
         }
         return result;
     }
@@ -811,6 +810,29 @@ public class AdaptiveDownsamplingSelector {
             default:
                 return LTThreeBuckets.sorted(data, targetCount);
         }
+    }
+
+    private static List<UniPoint> balancedUniformTrim(List<UniPoint> data, int targetCount) {
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0 || data.size() <= targetCount) {
+            return data;
+        }
+        if (targetCount == 1) {
+            return Collections.singletonList(data.get(0));
+        }
+        List<UniPoint> trimmed = new ArrayList<>(targetCount);
+        trimmed.add(data.get(0));
+        double step = (double) (data.size() - 1) / (targetCount - 1);
+        double cursor = step;
+        for (int i = 1; i < targetCount - 1; i++) {
+            int index = (int) Math.round(cursor);
+            if (index >= data.size() - 1) {
+                index = data.size() - 2;
+            }
+            trimmed.add(data.get(index));
+            cursor += step;
+        }
+        trimmed.add(data.get(data.size() - 1));
+        return trimmed;
     }
 
     // ==================== 具体算法实现（保持不变）====================
