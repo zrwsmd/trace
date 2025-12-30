@@ -20,18 +20,21 @@ public class AdaptiveDownsamplingSelector {
     private static final Logger logger = LoggerFactory.getLogger(AdaptiveDownsamplingSelector.class);
 
     // ==================== 配置参数 ====================
-    private static final int WINDOW_SIZE = 512;
+    private static final int WINDOW_SIZE = 256;  // 🔥 从512减半，更细粒度
     private static final int MIN_POINTS_FOR_ANALYSIS = 10;
 
     // 信号特征阈值
     private static final double FLATNESS_THRESHOLD = 0.01;
     private static final double LINEARITY_THRESHOLD = 0.95;
-    private static final double PERIODICITY_THRESHOLD = 0.6;  // 降低阈值，更容易识别周期
+    private static final double PERIODICITY_THRESHOLD = 0.55;  // 🔥 再降低，更容易识别
     private static final double STEP_THRESHOLD = 0.3;
     private static final double NOISE_RATIO_THRESHOLD = 0.5;
 
-    // 周期信号特殊处理：每个周期至少保证的采样点数
-    private static final int MIN_SAMPLES_PER_CYCLE = 8;
+    // 🔥 周期信号特殊处理：每个周期至少保证的采样点数
+    private static final int MIN_SAMPLES_PER_CYCLE = 12;  // 从8提升到12
+
+    // 🔥 全局最小密度保护（防止空白区域）
+    private static final double MIN_DENSITY_RATIO = 0.015;  // 至少保留1.5%的点
 
     /**
      * 主入口：自适应降采样
@@ -104,9 +107,13 @@ public class AdaptiveDownsamplingSelector {
             // 🔥 周期信号特殊处理：保证最小采样密度
             if (signalTypes[i] == SignalType.PERIODIC) {
                 int estimatedCycles = estimateCycleCount(allFeatures[i], windowData.size());
-                int minRequired = Math.max(MIN_SAMPLES_PER_CYCLE * estimatedCycles, 20);
+                int minRequired = Math.max(MIN_SAMPLES_PER_CYCLE * estimatedCycles, 30);
                 windowTargetCount = Math.max(windowTargetCount, minRequired);
             }
+
+            // 🔥 v3.1新增：全局最小密度保护（防止空白区域）
+            int globalMinCount = (int) Math.ceil(windowData.size() * MIN_DENSITY_RATIO);
+            windowTargetCount = Math.max(windowTargetCount, globalMinCount);
 
             // 其他信号的安全保底
             windowTargetCount = applySafetyConstraints(
@@ -136,8 +143,8 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 核心改进：归一化权重计算
-     * 关键：周期信号不受振幅影响
+     * 🔥 核心改进：归一化权重计算（v3.1调整）
+     * 关键：周期信号不受振幅影响，且获得更高优先级
      */
     private static double calculateNormalizedWeight(SignalType type, SignalFeatures features) {
         switch (type) {
@@ -148,9 +155,11 @@ public class AdaptiveDownsamplingSelector {
                 return 0.2;
 
             case PERIODIC:
-                // 🔥 关键改进：周期信号使用归一化波动率
-                // 不管振幅多大，相对复杂度是一样的
-                return Math.max(0.8, Math.min(1.5, features.normalizedVolatility));
+                // 🔥 v3.1：提高周期信号的基础权重
+                // 确保即使在资源紧张时也能保持足够密度
+                double baseWeight = 1.2;  // 从0.8提升到1.2
+                double volatilityBonus = Math.min(0.8, features.normalizedVolatility * 0.5);
+                return baseWeight + volatilityBonus;  // 范围 [1.2, 2.0]
 
             case STEP:
             case PULSE:
@@ -179,7 +188,7 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 安全保底约束
+     * 🔥 安全保底约束（v3.1强化版）
      */
     private static int applySafetyConstraints(
             int count, SignalType type, SignalFeatures features, int windowSize
@@ -190,12 +199,12 @@ public class AdaptiveDownsamplingSelector {
 
         int minCount;
         if (type == SignalType.PERIODIC || type == SignalType.COMPLEX) {
-            // 周期信号：至少 windowSize / 8
-            minCount = Math.max(20, windowSize / 8);
+            // 🔥 周期信号：至少 windowSize / 5（从1/8提升到1/5）
+            minCount = Math.max(30, windowSize / 5);
         } else if (type == SignalType.STEP || type == SignalType.PULSE) {
-            minCount = 10;
+            minCount = 15;  // 从10提升到15
         } else {
-            minCount = 2;
+            minCount = 5;  // 从2提升到5
         }
 
         return Math.max(minCount, count);
@@ -218,10 +227,10 @@ public class AdaptiveDownsamplingSelector {
 
             if (logger.isDebugEnabled()) {
                 logger.debug(
-                        "Var: {}, Type: {}, Algo: {}, In: {}, Out: {}, NormVol: {:.2f}, Period: {:.0f}",
+                        "🔍 Var: {}, Type: {}, Algo: {}, In: {}, Out: {}, NormVol: {:.3f}, Period: {:.0f}, Periodicity: {:.2f}",
                         dataPoints.get(0).getVarName(), signalType, algorithm,
                         dataPoints.size(), result.size(),
-                        features.normalizedVolatility, features.estimatedPeriod
+                        features.normalizedVolatility, features.estimatedPeriod, features.periodicity
                 );
             }
 
@@ -351,8 +360,8 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 核心改进：增强的周期性检测
-     * 先归一化，再做自相关
+     * 🔥 核心改进：增强的周期性检测（v3.1优化）
+     * 先归一化，再做自相关，增加鲁棒性
      */
     private static PeriodInfo detectPeriodicity(List<UniPoint> data) {
         PeriodInfo info = new PeriodInfo();
@@ -372,7 +381,7 @@ public class AdaptiveDownsamplingSelector {
 
         int minLag = Math.max(2, n / 10);
         int maxLag = n / 3;
-        int step = Math.max(1, (maxLag - minLag) / 30);
+        int step = Math.max(1, (maxLag - minLag) / 40);  // 🔥 从30改为40，更精细
 
         for (int lag = minLag; lag < maxLag; lag += step) {
             double corr = calculateAutocorrelationNormalized(normalized, lag);
@@ -382,16 +391,23 @@ public class AdaptiveDownsamplingSelector {
             }
         }
 
-        // 精细搜索最佳lag附近
-        int refinedLag = refinePerio(normalized, bestLag, maxCorr);
+        // 🔥 v3.1：放宽周期性判断
+        // 即使自相关不是很高，只要有一定的周期性就认可
+        if (maxCorr > 0.3) {  // 从隐式的更高阈值降低到0.3
+            // 精细搜索最佳lag附近
+            int refinedLag = refinePerio(normalized, bestLag, maxCorr);
+            info.strength = maxCorr;
+            info.period = refinedLag;
+        } else {
+            info.strength = 0.0;
+            info.period = 0;
+        }
 
-        info.strength = maxCorr;
-        info.period = refinedLag;
         return info;
     }
 
     /**
-     * 🔥 信号归一化（关键：去除振幅和偏移影响）
+     * 🔥 信号归一化（v3.1增强：更鲁棒的处理）
      */
     private static List<Double> normalizeSignal(List<UniPoint> data) {
         // 计算均值和标准差
@@ -406,13 +422,26 @@ public class AdaptiveDownsamplingSelector {
                 .orElse(0);
 
         double stdDev = Math.sqrt(variance);
-        if (stdDev < 1e-6) stdDev = 1.0;
+
+        // 🔥 v3.1：更鲁棒的处理
+        // 如果stdDev太小（平稳信号），返回去均值后的信号
+        if (stdDev < 1e-6) {
+            List<Double> normalized = new ArrayList<>(data.size());
+            for (UniPoint point : data) {
+                normalized.add(point.getY().doubleValue() - mean);
+            }
+            return normalized;
+        }
 
         // 标准化：(x - mean) / stdDev
         List<Double> normalized = new ArrayList<>(data.size());
         for (UniPoint point : data) {
             double y = point.getY().doubleValue();
-            normalized.add((y - mean) / stdDev);
+            double normValue = (y - mean) / stdDev;
+
+            // 🔥 防止异常值影响：限制在[-10, 10]范围内
+            normValue = Math.max(-10.0, Math.min(10.0, normValue));
+            normalized.add(normValue);
         }
 
         return normalized;
