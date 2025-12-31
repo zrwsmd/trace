@@ -40,22 +40,26 @@ public class AdaptiveDownsamplingSelector {
      * 主入口：自适应降采样
      */
     public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount) {
-        // 🔥 核心改进：根据 LTTB 源码，目标点数必须 <= 总点数 - 2
-        // 如果点数已经很接近目标了，直接返回原始数据，没必要降采样
-        if (CollectionUtils.isEmpty(dataPoints) || dataPoints.size() <= targetCount + 2 || targetCount <= 0) {
-            return dataPoints;
+        if (CollectionUtils.isEmpty(dataPoints)) {
+            return Collections.emptyList();
+        }
+        if (targetCount <= 0) {
+            return Collections.emptyList();
         }
 
-        if (dataPoints.size() < MIN_POINTS_FOR_ANALYSIS) {
-            return LTThreeBuckets.sorted(dataPoints, targetCount);
+        List<UniPoint> rawResult;
+
+        if (dataPoints.size() <= targetCount + 2) {
+            rawResult = new ArrayList<>(dataPoints);
+        } else if (dataPoints.size() < MIN_POINTS_FOR_ANALYSIS) {
+            rawResult = LTThreeBuckets.sorted(dataPoints, targetCount);
+        } else if (dataPoints.size() > WINDOW_SIZE * 2 && targetCount >= WINDOW_SIZE) {
+            rawResult = windowBasedDownsampling(dataPoints, targetCount);
+        } else {
+            rawResult = selectAndApplyAlgorithm(dataPoints, targetCount);
         }
 
-        // 分窗口处理
-        if (dataPoints.size() > WINDOW_SIZE * 2 && targetCount >= WINDOW_SIZE) {
-            return windowBasedDownsampling(dataPoints, targetCount);
-        }
-
-        return selectAndApplyAlgorithm(dataPoints, targetCount);
+        return normalizeToTarget(rawResult, dataPoints, targetCount);
     }
 
     /**
@@ -141,9 +145,6 @@ public class AdaptiveDownsamplingSelector {
             result.addAll(windowResult);
         }
 
-        if (result.size() > targetCount) {
-            return balancedUniformTrim(result, targetCount);
-        }
         return result;
     }
 
@@ -220,7 +221,7 @@ public class AdaptiveDownsamplingSelector {
 
             if (logger.isDebugEnabled()) {
                 logger.debug(
-                        "🔍 Var: {}, Type: {}, Algo: {}, In: {}, Out: {}, NormVol: {:.3f}, Period: {:.0f}, Periodicity: {:.2f}",
+                        "🔍 Var: {}, Type: {}, Algo: {}, In: {}, RawOut: {}, NormVol: {:.3f}, Period: {:.0f}, Periodicity: {:.2f}",
                         dataPoints.get(0).getVarName(), signalType, algorithm,
                         dataPoints.size(), result.size(),
                         features.normalizedVolatility, features.estimatedPeriod, features.periodicity
@@ -941,6 +942,65 @@ public class AdaptiveDownsamplingSelector {
         return selected;
     }
 
+    private static List<UniPoint> normalizeToTarget(
+            List<UniPoint> candidate, List<UniPoint> original, int targetCount
+    ) {
+        if (targetCount <= 0) {
+            return Collections.emptyList();
+        }
+
+        List<UniPoint> safeOriginal = CollectionUtils.isEmpty(original)
+                ? Collections.emptyList()
+                : original;
+        List<UniPoint> safeCandidate = candidate == null ? Collections.emptyList() : candidate;
+
+        if (safeCandidate.size() == targetCount || safeOriginal.isEmpty()) {
+            return safeCandidate;
+        }
+
+        if (safeCandidate.size() > targetCount) {
+            return balancedUniformTrim(safeCandidate, targetCount);
+        }
+
+        int missing = targetCount - safeCandidate.size();
+        LinkedHashSet<UniPoint> merged = new LinkedHashSet<>(safeCandidate.size() + missing);
+        merged.addAll(safeCandidate);
+
+        if (missing > 0 && !safeOriginal.isEmpty()) {
+            int fillerCount = Math.min(safeOriginal.size(), Math.max(missing * 2, missing));
+            List<UniPoint> filler;
+            if (fillerCount <= 0) {
+                filler = Collections.emptyList();
+            } else if (fillerCount == 1) {
+                filler = Collections.singletonList(safeOriginal.get(safeOriginal.size() / 2));
+            } else {
+                filler = uniformDownsampling(safeOriginal, fillerCount);
+            }
+            for (UniPoint point : filler) {
+                merged.add(point);
+                if (merged.size() >= targetCount) {
+                    break;
+                }
+            }
+        }
+
+        if (merged.size() < targetCount) {
+            for (UniPoint point : safeOriginal) {
+                if (merged.add(point) && merged.size() >= targetCount) {
+                    break;
+                }
+            }
+        }
+
+        List<UniPoint> normalized = new ArrayList<>(merged);
+        normalized.sort(Comparator.comparing(UniPoint::getX));
+
+        if (normalized.size() > targetCount) {
+            return balancedUniformTrim(normalized, targetCount);
+        }
+        return normalized;
+    }
+
     private static List<UniPoint> balancedUniformTrim(List<UniPoint> data, int targetCount) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0 || data.size() <= targetCount) {
             return data;
@@ -975,6 +1035,16 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static List<UniPoint> uniformDownsampling(List<UniPoint> data, int targetCount) {
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0) {
+            return Collections.emptyList();
+        }
+        if (targetCount >= data.size()) {
+            return new ArrayList<>(data);
+        }
+        if (targetCount == 1) {
+            return Collections.singletonList(data.get(data.size() / 2));
+        }
+
         List<UniPoint> result = new ArrayList<>(targetCount);
         double step = (double) (data.size() - 1) / (targetCount - 1);
 

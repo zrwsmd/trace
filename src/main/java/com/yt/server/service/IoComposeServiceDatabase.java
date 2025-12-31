@@ -2,14 +2,15 @@ package com.yt.server.service;
 
 
 import com.alibaba.fastjson.JSONObject;
-import com.ggalmazor.ltdownsampling.LTThreeBuckets;
 import com.yt.server.entity.*;
 import com.yt.server.mapper.TableNumInfoMapper;
 import com.yt.server.mapper.TraceFieldMetaMapper;
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import com.yt.server.mapper.TraceTimestampStatisticsMapper;
-import com.yt.server.util.*;
-import com.zaxxer.hikari.HikariDataSource;
+import com.yt.server.util.AdaptiveDownsamplingSelector;
+import com.yt.server.util.BaseUtils;
+import com.yt.server.util.MysqlUtils;
+import com.yt.server.util.VarConst;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.map.MultiValueMap;
 import org.apache.commons.lang3.StringUtils;
@@ -17,7 +18,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -31,7 +31,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.yt.server.entity.AA.*;
 import static com.yt.server.util.BaseUtils.*;
 
 
@@ -432,11 +431,11 @@ public class IoComposeServiceDatabase {
             traceRule = new LastHigherLineRule();
         }
 //        Integer reqNum = traceRule.getReqNum();
-        int reqNum = 5000;
+        int reqNum = 8000;
         if (originalVarList.size() > 5 && originalVarList.size() <= 10) {
-            reqNum = 3000;
+            reqNum = 5000;
         } else if (originalVarList.size() > 10) {
-            reqNum = 2000;
+            reqNum = 3500;
         }
         List<String> filterVarList = new ArrayList<>();
         List<Map<String, String>> mapList = new ArrayList<>();
