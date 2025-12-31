@@ -742,7 +742,7 @@ public class AdaptiveDownsamplingSelector {
     // ==================== 算法选择与应用 ====================
 
     enum DownsamplingAlgorithm {
-        KEEP_FIRST_LAST, LTTB, MIN_MAX, UNIFORM, PEAK_DETECTION, ADAPTIVE_LTTB
+        KEEP_FIRST_LAST, LTTB, MIN_MAX, UNIFORM, PEAK_DETECTION, ADAPTIVE_LTTB, HYBRID_ENVELOPE
     }
 
     private static DownsamplingAlgorithm selectAlgorithm(
@@ -757,6 +757,9 @@ public class AdaptiveDownsamplingSelector {
 
         // 高压缩比场景 (>10)
         if (compression > 10.0) {
+            if (signalType == SignalType.PERIODIC || signalType == SignalType.AMPLITUDE_MODULATED) {
+                return DownsamplingAlgorithm.HYBRID_ENVELOPE;
+            }
             // 只要不是纯线性的，都优先保证包络 (MIN_MAX)
             return (features.linearity > 0.99) ? DownsamplingAlgorithm.LTTB : DownsamplingAlgorithm.MIN_MAX;
         }
@@ -765,7 +768,7 @@ public class AdaptiveDownsamplingSelector {
         switch (signalType) {
             case PERIODIC:
             case AMPLITUDE_MODULATED:
-                return DownsamplingAlgorithm.ADAPTIVE_LTTB;
+                return DownsamplingAlgorithm.HYBRID_ENVELOPE;
             case COMPLEX:
             case TREND_NOISE:
                 // 复杂信号使用 ADAPTIVE_LTTB (它会在内部做二次分段加权)
@@ -807,9 +810,135 @@ public class AdaptiveDownsamplingSelector {
                 return peakDetectionDownsampling(data, targetCount);
             case ADAPTIVE_LTTB:
                 return adaptiveLTTB(data, targetCount);
+            case HYBRID_ENVELOPE:
+                return hybridEnvelopeDownsampling(data, targetCount, features);
             default:
                 return LTThreeBuckets.sorted(data, targetCount);
         }
+    }
+
+    private static List<UniPoint> hybridEnvelopeDownsampling(
+            List<UniPoint> data, int targetCount, SignalFeatures features
+    ) {
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0) {
+            return data;
+        }
+
+        int safeTarget = Math.min(Math.max(targetCount, 2), data.size());
+        if (safeTarget <= 5) {
+            return MinMaxDownsampler.downsample(data, safeTarget);
+        }
+
+        int envelopeQuota = Math.max(4, (int) Math.round(safeTarget * 0.35));
+        int centerQuota = Math.max(2, (int) Math.round(safeTarget * 0.35));
+        if (envelopeQuota + centerQuota >= safeTarget) {
+            centerQuota = Math.max(0, safeTarget - envelopeQuota - 1);
+        }
+        int fillerQuota = Math.max(0, safeTarget - envelopeQuota - centerQuota);
+
+        List<UniPoint> envelope = MinMaxDownsampler.downsample(data, envelopeQuota);
+        if (CollectionUtils.isEmpty(envelope)) {
+            return LTThreeBuckets.sorted(data, safeTarget);
+        }
+
+        int remaining = safeTarget - envelope.size();
+
+        List<UniPoint> centralBand = sampleCentralBand(data, Math.min(centerQuota, Math.max(0, remaining)));
+        remaining = safeTarget - envelope.size() - centralBand.size();
+
+        List<UniPoint> filler = Collections.emptyList();
+        if (remaining > 0) {
+            boolean noisy = features != null && features.noiseRatio > NOISE_RATIO_THRESHOLD;
+            filler = noisy ? LTThreeBuckets.sorted(data, Math.max(remaining, 2)) : uniformDownsampling(data, Math.max(remaining, 2));
+        }
+
+        LinkedHashSet<UniPoint> merged = new LinkedHashSet<>(safeTarget);
+        for (UniPoint point : envelope) {
+            merged.add(point);
+        }
+        for (UniPoint point : centralBand) {
+            merged.add(point);
+        }
+        for (UniPoint point : filler) {
+            if (merged.size() >= safeTarget) break;
+            merged.add(point);
+        }
+
+        if (merged.size() < safeTarget) {
+            for (UniPoint point : data) {
+                if (merged.add(point) && merged.size() >= safeTarget) {
+                    break;
+                }
+            }
+        }
+
+        List<UniPoint> mergedList = new ArrayList<>(merged);
+        mergedList.sort(Comparator.comparing(UniPoint::getX));
+
+        if (mergedList.size() > safeTarget) {
+            return balancedUniformTrim(mergedList, safeTarget);
+        }
+        return mergedList;
+    }
+
+    private static List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) {
+        if (quota <= 0 || CollectionUtils.isEmpty(data)) {
+            return Collections.emptyList();
+        }
+
+        int bucketCount = Math.min(Math.max(1, quota * 2), data.size());
+        double bucketWidth = (double) data.size() / bucketCount;
+
+        List<UniPoint> selected = new ArrayList<>(quota);
+        for (int i = 0; i < bucketCount && selected.size() < quota; i++) {
+            int start = (int) Math.floor(i * bucketWidth);
+            int end = (int) Math.min(data.size(), Math.round((i + 1) * bucketWidth));
+            if (start >= end) continue;
+
+            double sum = 0;
+            for (int j = start; j < end; j++) {
+                sum += data.get(j).getY().doubleValue();
+            }
+            double baseline = sum / (end - start);
+
+            UniPoint closest = null;
+            double bestDiff = Double.MAX_VALUE;
+            for (int j = start; j < end; j++) {
+                double diff = Math.abs(data.get(j).getY().doubleValue() - baseline);
+                if (diff < bestDiff) {
+                    bestDiff = diff;
+                    closest = data.get(j);
+                }
+            }
+
+            if (closest != null) {
+                selected.add(closest);
+            }
+        }
+
+        if (selected.isEmpty()) {
+            return uniformDownsampling(data, quota);
+        }
+
+        selected.sort(Comparator.comparing(UniPoint::getX));
+
+        if (selected.size() > quota) {
+            return balancedUniformTrim(selected, quota);
+        }
+
+        if (selected.size() < quota) {
+            List<UniPoint> extras = uniformDownsampling(data, quota - selected.size());
+            LinkedHashSet<UniPoint> merged = new LinkedHashSet<>(selected);
+            for (UniPoint extra : extras) {
+                merged.add(extra);
+                if (merged.size() >= quota) break;
+            }
+            List<UniPoint> result = new ArrayList<>(merged);
+            result.sort(Comparator.comparing(UniPoint::getX));
+            return result;
+        }
+
+        return selected;
     }
 
     private static List<UniPoint> balancedUniformTrim(List<UniPoint> data, int targetCount) {
