@@ -1,11 +1,12 @@
 package com.yt.server.service;
 
-import com.ggalmazor.ltdownsampling.LTThreeBuckets;
 import com.yt.server.entity.*;
 import com.yt.server.mapper.TraceFieldMetaMapper;
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import com.yt.server.mapper.TraceTimestampStatisticsMapper;
-import com.yt.server.util.*;
+import com.yt.server.util.AdaptiveDownsamplingSelector;
+import com.yt.server.util.BaseUtils;
+import com.yt.server.util.VarConst;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
@@ -13,30 +14,20 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import javax.sql.DataSource;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.sql.Connection;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
-import static com.yt.server.entity.AA.writeTimestampToD4;
 import static com.yt.server.service.IoComposeServiceDatabase.*;
 import static com.yt.server.util.BaseUtils.convertList2Uni;
-import static com.yt.server.util.BaseUtils.getCurrentDownsamplingRate;
 
 /**
  * @description:
@@ -121,7 +112,7 @@ public class HandleWasteTimeService {
                 final String tableName = traceTableRelatedInfo.getTableName();
                 long total = 0L;
                 TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
-                int downSamplingRate = 8;
+                int downSamplingRate = 4;
                 if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
                     for (int i = 0; i < shardNum; i++) {
                         String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
@@ -161,8 +152,10 @@ public class HandleWasteTimeService {
                                 //save to database
                                 List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
                                 BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
-                                Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
-                                Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 4, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
                                 handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                                 handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                             }
@@ -226,8 +219,10 @@ public class HandleWasteTimeService {
                     //save to database
                     List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
                     BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
-                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 4, connection, downSamplingRate, parentDownsamplingTableName);
-                    Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 4, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
                     handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                     handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
                 }

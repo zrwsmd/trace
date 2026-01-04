@@ -31,6 +31,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static com.yt.server.entity.AA.writeTimestampToD4;
 import static com.yt.server.util.BaseUtils.*;
 
 
@@ -95,7 +96,7 @@ public class IoComposeServiceDatabase {
 //        downsamplingRate.add(16);
     }
 
-    public static Integer[] data = new Integer[]{8, 32, 128, 256, 512};
+    public static Integer[] data = new Integer[]{4, 8, 32, 64, 128, 256, 512};
 
     Map<String, Integer> perMap = new ConcurrentHashMap<>();
 
@@ -451,17 +452,18 @@ public class IoComposeServiceDatabase {
         final String currentTraceTableName = traceTableRelatedInfo.getTableName();
         final String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
         if (StringUtils.isNotEmpty(currentTraceTableName)) {
-            return parseLiveData(reqStartTimestamp, reqEndTimestamp, reqNum, downsamplingTableName, currentTraceTableName, filterVarList, mapList, traceRule);
+            return parseLiveData(reqStartTimestamp, reqEndTimestamp, reqNum, downsamplingTableName, currentTraceTableName, filterVarList, mapList);
         } else {
             throw new RuntimeException("查询原始表失败");
         }
     }
 
 
-    private MultiValueMap parseLiveData(Long reqStartTimestamp, Long reqEndTimestamp, Integer reqNum, String downsamplingTableName, String currentTableName, List<String> filterVarList, List<Map<String, String>> mapList, TraceRule traceRule) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
+    private MultiValueMap parseLiveData(Long reqStartTimestamp, Long reqEndTimestamp, Integer reqNum, String downsamplingTableName, String currentTableName, List<String> filterVarList, List<Map<String, String>> mapList) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
         final MultiValueMap allMultiValueMap = new MultiValueMap();
         try {
             String fieldName = StringUtils.join(filterVarList, ",");
+            writeTimestampToD4(String.valueOf(getConfigPer()), reqStartTimestamp, reqEndTimestamp);
             reqStartTimestamp = getMinValue(reqStartTimestamp, getConfigPer());
             final Set<String> queryTableList = getQueryTable(reqStartTimestamp, reqEndTimestamp, currentTableName);
             if (reqEndTimestamp >= (long) totalSize * getConfigPer()) {
@@ -470,16 +472,18 @@ public class IoComposeServiceDatabase {
             int originalNum = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer());
             if (originalNum != 0) {
                 //原始数据小于请求数据，所以都返回
-                if (originalNum <= traceRule.getReqNum()) {
+                if (originalNum <= reqNum) {
                     //writeTimestampToD3("query from full table,originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
                     return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
                 }
                 if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() >= firstPoint) {
-                    String downTableSuffix = traceRule.downTableSuffix();
+                    int originalDownTableSuffix = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer() / reqNum);
+                    int closestRate = getClosestRate(originalDownTableSuffix);
+                    String downTableSuffix = String.valueOf(closestRate);
                     //比如 x/512/6000>1 x约等于3000000
-                    if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() > highPoint) {
-                        downTableSuffix = otherDownTableSuffix;
-                    }
+//                    if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() > highPoint) {
+//                        downTableSuffix = otherDownTableSuffix;
+//                    }
                     // int closestRate = 8;
                     Set<Future<List<UniPoint>>> resultList = new HashSet<>();
                     CountDownLatch countDownLatch = new CountDownLatch(filterVarList.size());
