@@ -1,6 +1,7 @@
 package com.yt.server.service;
 
 import com.yt.server.entity.TraceDownsampling;
+import com.yt.server.entity.UniPoint;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.map.MultiValueMap;
 import org.slf4j.Logger;
@@ -27,7 +28,7 @@ import static com.yt.server.util.BaseUtils.*;
  * @version:1.0
  */
 
-public class QueryEachDownsamplingRowHandler implements Callable<MultiValueMap> {
+public class QueryEachDownsamplingRowHandler implements Callable<List<UniPoint>> {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryEachDownsamplingRowHandler.class);
 
@@ -60,20 +61,17 @@ public class QueryEachDownsamplingRowHandler implements Callable<MultiValueMap> 
 
 
     @Override
-    public MultiValueMap call() throws Exception {
-        MultiValueMap multiValueMap;
-        MultiValueMap allValueMap = new MultiValueMap();
+    public List<UniPoint> call() throws Exception {
+        List<UniPoint> uniPointList = null;
         try {
             Object[] samplingParam = new Object[]{currentStartTimestamp, currentEndTimestamp};
-            if (currentStartTimestamp.equals(reqStartTimestamp)) {
-                queryBorderData(allValueMap, currentStartTimestamp);
-            }
+//            if (currentStartTimestamp.equals(reqStartTimestamp)) {
+//                queryBorderData(allValueMap, currentStartTimestamp);
+//            }
             String realQueryTable = queryTable.concat("_").concat(String.valueOf(closestRate));
             String samplingSql = " select timestamp, value from " + realQueryTable + "  where  timestamp between ? and ?  ";
             List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
-            multiValueMap = convert2MultiMapForTraceDownSampling(traceDownsamplingList, varName, mapList);
-            allValueMap.putAll(multiValueMap);
-            multiValueMap.clear();
+            uniPointList = convertTraceDownsampling2UniPoint(traceDownsamplingList, varName);
 //            if (currentEndTimestamp.equals(reqEndTimestamp)) {
 //                queryBorderData(allValueMap, currentEndTimestamp);
 //            }
@@ -81,7 +79,7 @@ public class QueryEachDownsamplingRowHandler implements Callable<MultiValueMap> 
         } catch (DataAccessException e) {
             logger.error(QueryEachDownsamplingRowHandler.class.getName(), e);
         }
-        return allValueMap;
+        return uniPointList;
     }
 
 

@@ -476,9 +476,9 @@ public class IoComposeServiceDatabase {
                     //writeTimestampToD3("query from full table,originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
                     return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
                 }
+                int originalDownTableSuffix = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer() / reqNum);
+                int closestRate = getClosestRate(originalDownTableSuffix);
                 if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() >= firstPoint) {
-                    int originalDownTableSuffix = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer() / reqNum);
-                    int closestRate = getClosestRate(originalDownTableSuffix);
                     String downTableSuffix = String.valueOf(closestRate);
                     //比如 x/512/6000>1 x约等于3000000
 //                    if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() > highPoint) {
@@ -497,8 +497,6 @@ public class IoComposeServiceDatabase {
                         allUniPointList.addAll(future.get());
                     }
                     final Map<String, List<UniPoint>> map = allUniPointList.stream().collect(Collectors.groupingBy(UniPoint::getVarName));
-//                    Set<Future<MultiValueMap>> dichotomyResultList = new HashSet<>();
-//                    CountDownLatch dichotomyCountDownLatch = new CountDownLatch(map.size());
                     int gap = -1;
                     for (Map.Entry<String, List<UniPoint>> entry : map.entrySet()) {
                         List<UniPoint> uniPointList = entry.getValue();
@@ -528,112 +526,117 @@ public class IoComposeServiceDatabase {
                             allMultiValueMap.putAll(multiValueMap);
                         }
                     }
-//                    if (gap >= 1) {
-//                        dichotomyCountDownLatch.await();
-//                        for (Future<MultiValueMap> dichotomyFuture : dichotomyResultList) {
-//                            allMultiValueMap.putAll(dichotomyFuture.get());
-//                        }
-//                    }
-                    // int totalDownsamplingRate = gap > 1 ? Integer.parseInt(downTableSuffix) * closestRate : Integer.parseInt(downTableSuffix);
                     handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), Integer.parseInt(downTableSuffix), filterVarList);
                     //writeTimestampToD3("gap="+gap+",downTableSuffix="+downTableSuffix+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
                     //writeTimestampToD3("大数据量当前使用了" + downTableSuffix + "降采样", reqStartTimestamp, reqEndTimestamp);
                     //logger.info("大数据量当前使用了{}降采样", downTableSuffix);
                     return allMultiValueMap;
                 }
-                float f = (float) originalNum / (float) reqNum;
-                int gap = Math.round(f);
-                if (gap >= 1) {
-                    //writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
-                    //原始数据大于请求数据，查询降采样表
-                    int closestRate = getClosestRate(gap);
-                    Set<Future<MultiValueMap>> resultList = new HashSet<>();
-                    CountDownLatch countDownLatch = new CountDownLatch(filterVarList.size());
-                    for (String varName : filterVarList) {
-                        Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingTableHandler(downsamplingTableName.concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate, shardNum, mapList));
-                        resultList.add(future);
+                //writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
+                Set<Future<List<UniPoint>>> resultList = new HashSet<>();
+                CountDownLatch countDownLatch = new CountDownLatch(filterVarList.size());
+                List<UniPoint> allUniPointList = new ArrayList<>();
+                for (String varName : filterVarList) {
+                    Future<List<UniPoint>> future = pool.submit(new QueryEachDownsamplingTableHandler(downsamplingTableName.concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate, shardNum, mapList));
+                    resultList.add(future);
+                }
+                countDownLatch.await();
+                for (Future<List<UniPoint>> future : resultList) {
+                    allUniPointList.addAll(future.get());
+                }
+                final Map<String, List<UniPoint>> map = allUniPointList.stream().collect(Collectors.groupingBy(UniPoint::getVarName));
+                for (Map.Entry<String, List<UniPoint>> entry : map.entrySet()) {
+                    List<UniPoint> uniPointList = entry.getValue();
+                    float innerF = (float) uniPointList.size() / (float) reqNum;
+                    int innerGap = Math.round(innerF);
+                    innerGap = uniPointList.size() / reqNum;
+                    if (innerGap >= 1) {
+                        //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
+                        uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
+                        MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
+                        allMultiValueMap.putAll(multiValueMap);
+                    } else if (innerGap == 0) {
+                        MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
+                        allMultiValueMap.putAll(multiValueMap);
                     }
-                    countDownLatch.await();
-                    for (Future<MultiValueMap> future : resultList) {
-                        allMultiValueMap.putAll(future.get());
+                }
+                final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
+                long threadLastValue = 0;
+                for (Map.Entry<BigDecimal, BigDecimal> entry : entrySet) {
+                    List valueList = (List) entry.getValue();
+                    if (valueList.size() > 2) {
+                        BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 2);
+                        threadLastValue = endBd[0].longValue();
                     }
-                    final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
-                    long threadLastValue = 0;
-                    for (Map.Entry<BigDecimal, BigDecimal> entry : entrySet) {
-                        List valueList = (List) entry.getValue();
-                        if (valueList.size() > 2) {
-                            BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 2);
-                            threadLastValue = endBd[0].longValue();
-                        }
-                        break;
-                    }
-                    //处理某些变量拉下的情况(这些变量对应的降采样表还没有插入数据，此时去全表查询降采样)
-                    List<Pair<String, BigDecimal[]>> lagList = handleLagDownsampling(entrySet);
-                    if (CollectionUtils.isNotEmpty(lagList)) {
-                        String field = "";
-                        BigDecimal currentTimestamp = null;
-                        for (int i = 0; i < lagList.size(); i++) {
-                            Pair<String, BigDecimal[]> pair = lagList.get(i);
-                            String filterVarName = pair.getLeft();
-                            if (i == 0) {
-                                currentTimestamp = pair.getRight()[0];
-                                field = field.concat(filterVarName);
-                            } else {
-                                field = field.concat(",").concat(filterVarName);
-                            }
-                        }
-                        if ((reqEndTimestamp - currentTimestamp.longValue()) / getConfigPer() <= lagNum) {
-//                            Set<String> lagQueryTableList = getQueryTable(currentTimestamp.longValue(), reqEndTimestamp, currentTableName);
-                            handleTailOrHeadBusiness(currentTimestamp.longValue(), reqEndTimestamp, currentTableName, mapList, field, allMultiValueMap, closestRate, filterVarList);
-                            //handleFromFull(currentTimestamp.longValue(), reqEndTimestamp, currentTableName, mapList, allMultiValueMap, field, lagQueryTableList);
-                            //logger.info("handle other lag varNames,use full data");
-                        }
-                    }
-                    if (reqEndTimestamp - threadLastValue > LAG) {
-                        if (threadLastValue != 0) {
-                            Set<String> otherQueryTableList = getQueryTable(threadLastValue + 1, reqEndTimestamp - 1, currentTableName);
-                            CountDownLatch lagCountDownLatch = new CountDownLatch(otherQueryTableList.size());
-                            List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
-                            List<UniPoint> lagUniPointList = new ArrayList<>();
-                            for (String table : otherQueryTableList) {
-                                Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, threadLastValue + 1, reqEndTimestamp - 1, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
-                                lagResultList.add(future);
-                            }
-                            lagCountDownLatch.await();
-                            for (Future<List<UniPoint>> future : lagResultList) {
-                                lagUniPointList.addAll(future.get());
-                            }
-                            for (String varName : filterVarList) {
-                                List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
-                                int bucketSize = singleVarDataList.size() / closestRate;
-                                if (bucketSize > 0) {
-                                    List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize);
-                                    uniPoint2Map(uniPoints, allMultiValueMap, mapList);
-                                }
-
-                            }
+                    break;
+                }
+                //处理某些变量拉下的情况(这些变量对应的降采样表还没有插入数据，此时去全表查询降采样)
+                List<Pair<String, BigDecimal[]>> lagList = handleLagDownsampling(entrySet);
+                if (CollectionUtils.isNotEmpty(lagList)) {
+                    String field = "";
+                    BigDecimal currentTimestamp = null;
+                    for (int i = 0; i < lagList.size(); i++) {
+                        Pair<String, BigDecimal[]> pair = lagList.get(i);
+                        String filterVarName = pair.getLeft();
+                        if (i == 0) {
+                            currentTimestamp = pair.getRight()[0];
+                            field = field.concat(filterVarName);
                         } else {
-                            if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() <= lagNum) {
-                                //logger.info("async downsampling data is not completed,so handle from full table");
-                                //writeTimestampToD3("async downsampling data is not completed,so handle from full table", reqStartTimestamp, reqEndTimestamp);
-                                return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
-                            }
+                            field = field.concat(",").concat(filterVarName);
                         }
+                    }
+                    if ((reqEndTimestamp - currentTimestamp.longValue()) / getConfigPer() <= lagNum) {
+//                            Set<String> lagQueryTableList = getQueryTable(currentTimestamp.longValue(), reqEndTimestamp, currentTableName);
+                        handleTailOrHeadBusiness(currentTimestamp.longValue(), reqEndTimestamp, currentTableName, mapList, field, allMultiValueMap, closestRate, filterVarList);
+                        //handleFromFull(currentTimestamp.longValue(), reqEndTimestamp, currentTableName, mapList, allMultiValueMap, field, lagQueryTableList);
+                        //logger.info("handle other lag varNames,use full data");
+                    }
+                }
+                if (reqEndTimestamp - threadLastValue > LAG) {
+                    if (threadLastValue != 0) {
+                        Set<String> otherQueryTableList = getQueryTable(threadLastValue + 1, reqEndTimestamp - 1, currentTableName);
+                        CountDownLatch lagCountDownLatch = new CountDownLatch(otherQueryTableList.size());
+                        List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
+                        List<UniPoint> lagUniPointList = new ArrayList<>();
+                        for (String table : otherQueryTableList) {
+                            Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, threadLastValue + 1, reqEndTimestamp - 1, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
+                            lagResultList.add(future);
+                        }
+                        lagCountDownLatch.await();
+                        for (Future<List<UniPoint>> future : lagResultList) {
+                            lagUniPointList.addAll(future.get());
+                        }
+                        for (String varName : filterVarList) {
+                            List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
+                            int bucketSize = singleVarDataList.size() / closestRate;
+                            if (bucketSize > 0) {
+                                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize);
+                                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+                            }
 
+                        }
+                    } else {
+                        if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() <= lagNum) {
+                            //logger.info("async downsampling data is not completed,so handle from full table");
+                            //writeTimestampToD3("async downsampling data is not completed,so handle from full table", reqStartTimestamp, reqEndTimestamp);
+                            return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
+                        }
                     }
-                    //54-140  per=10  downrate=16  50 66 82 98 114 130 131-140再次降采样 需要
-                    //54-210  per=10  downrate=16  50 66 82 98 114 130 146 162 178 194 210 不用了
-                    if ((reqEndTimestamp - reqStartTimestamp) % closestRate != 0 || reqEndTimestamp % getConfigPer() != 0) {
-                        handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), closestRate, filterVarList);
-                    }
-                    //实时数据请求的时候所有变量最新的数据还没有插入降采样表，因此所有变量都从全量表查询，同时数据小于3000才去全量表差，要不然前端渲染有压力
+
+                }
+                //54-140  per=10  downrate=16  50 66 82 98 114 130 131-140再次降采样 需要
+                //54-210  per=10  downrate=16  50 66 82 98 114 130 146 162 178 194 210 不用了
+                if ((reqEndTimestamp - reqStartTimestamp) % closestRate != 0 || reqEndTimestamp % getConfigPer() != 0) {
+                    handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), closestRate, filterVarList);
+                }
+                //实时数据请求的时候所有变量最新的数据还没有插入降采样表，因此所有变量都从全量表查询，同时数据小于3000才去全量表差，要不然前端渲染有压力
 //                    if ((reqEndTimestamp - threadLastValue) / perMap.get("per") <= lagNum) {
 //                        handleFromFull(threadLastValue, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
 //                    }
-                    //logger.info("小数据量使用了{}倍降采样，数据返回成功", closestRate);
-                    //writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")), reqStartTimestamp, reqEndTimestamp);
-                    return allMultiValueMap;
-                }
+                //logger.info("小数据量使用了{}倍降采样，数据返回成功", closestRate);
+                //writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")), reqStartTimestamp, reqEndTimestamp);
+                return allMultiValueMap;
+
             }
             return new MultiValueMap();
         } finally {

@@ -1,6 +1,6 @@
 package com.yt.server.service;
 
-import org.apache.commons.collections.map.MultiValueMap;
+import com.yt.server.entity.UniPoint;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -19,7 +19,7 @@ import java.util.concurrent.*;
  * @version:1.0
  */
 
-public class QueryEachDownsamplingTableHandler implements Callable<MultiValueMap> {
+public class QueryEachDownsamplingTableHandler implements Callable<List<UniPoint>> {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryEachDownsamplingTableHandler.class);
 
@@ -51,10 +51,9 @@ public class QueryEachDownsamplingTableHandler implements Callable<MultiValueMap
 
 
     @Override
-    public MultiValueMap call() throws Exception {
-        MultiValueMap allMultiValueMap = null;
+    public List<UniPoint> call() throws Exception {
+        List<UniPoint> allUniPointList = new ArrayList<>();
         try {
-            allMultiValueMap = new MultiValueMap();
             int size = 0;
             if ((reqEndTimestamp - reqStartTimestamp) % 500 != 0) {
                 size = 501;
@@ -63,24 +62,24 @@ public class QueryEachDownsamplingTableHandler implements Callable<MultiValueMap
             }
             CountDownLatch innerCountDownLatch = new CountDownLatch(size);
             final long shard = (reqEndTimestamp - reqStartTimestamp) / 500;
-            List<Future<MultiValueMap>> resultList = new ArrayList<>();
+            List<Future<List<UniPoint>>> resultList = new ArrayList<>();
             //60000 1000000           60000 154000 154001 248000
             for (int i = 0; i < 500; i++) {
                 if (i == 0) {
-                    Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
+                    Future<List<UniPoint>> future = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
                     resultList.add(future);
                 } else {
-                    Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
+                    Future<List<UniPoint>> future = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
                     resultList.add(future);
                 }
             }
             if ((reqEndTimestamp - reqStartTimestamp) % 500 != 0) {
-                Future<MultiValueMap> leftFuture = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1, reqEndTimestamp, jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
+                Future<List<UniPoint>> leftFuture = pool.submit(new QueryEachDownsamplingRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1, reqEndTimestamp, jdbcTemplate, innerCountDownLatch, varName, closestRate, reqStartTimestamp, reqEndTimestamp, shardNum, mapList));
                 resultList.add(leftFuture);
             }
             innerCountDownLatch.await();
-            for (Future<MultiValueMap> future : resultList) {
-                allMultiValueMap.putAll(future.get());
+            for (Future<List<UniPoint>> future : resultList) {
+                allUniPointList.addAll(future.get());
             }
             countDownLatch.countDown();
         } catch (Exception e) {
@@ -94,6 +93,6 @@ public class QueryEachDownsamplingTableHandler implements Callable<MultiValueMap
 //        List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
 //        MultiValueMap multiValueMap = convert2MultiMapForTraceDownSampling(traceDownsamplingList);
 //        countDownLatch.countDown();
-        return allMultiValueMap;
+        return allUniPointList;
     }
 }
