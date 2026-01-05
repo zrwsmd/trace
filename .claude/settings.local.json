@@ -6,7 +6,8 @@
       "Bash(python:*)",
       "Bash(pip install:*)",
       "Bash(./gradlew classes)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Skill(ralph-wiggum:ralph-loop)"
     ],
     "deny": [],
     "ask": []
