@@ -2,28 +2,21 @@ package com.yt.server;
 
 
 import cn.ipokerface.mybatis.parser.ConfigurationParser;
-
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.ggalmazor.ltdownsampling.LTThreeBuckets;
 import com.google.common.collect.Lists;
 import com.yt.server.entity.*;
 import com.yt.server.mapper.TableNumInfoMapper;
-
-
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import com.yt.server.service.LagFullTableHandler;
-import com.yt.server.service.QueryEachDownsamplingTableHandler;
 import com.yt.server.util.BaseUtils;
 import com.yt.server.util.ConnectionManager;
 import com.yt.server.util.VarConst;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
-
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.ListUtils;
 import org.apache.commons.collections.map.MultiValueMap;
-
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.dom4j.Attribute;
@@ -40,7 +33,6 @@ import org.mybatis.generator.exception.XMLParserException;
 import org.mybatis.generator.internal.DefaultShellCallback;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-
 import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -377,7 +369,7 @@ class DemoApplicationTests {
     @Test
     void testBatchInsert() throws IOException, ClassNotFoundException, SQLException {
         Connection connection = ConnectionManager.getConnection("test");
-        insertDownsampling(connection);
+        //insertDownsampling(connection);
         // insertDownsampling(connection);
 //        List<Object[]> objects = new ArrayList<>();
 //            for (int i = 1000000; i < 4000000; i++) {
@@ -393,114 +385,115 @@ class DemoApplicationTests {
 
     }
 
-    @Test
-    public static void insertDownsampling(Connection conn) {
-        // 开始时间
-        Long begin = System.currentTimeMillis();
-        // sql前缀
-        //String prefix = "INSERT INTO trace1 (id, earn, age, pwd) VALUES";
-        String prefix = " INSERT INTO test.trace_downsampling (id, varName, `timestamp`, value, downSamplingRate) VALUES";
-        try {
-            // 保存sql后缀
-            StringBuffer suffix = new StringBuffer();
-            // 设置事务为非自动提交
-            conn.setAutoCommit(false);
-            // 比起st，pst会更好些
-            PreparedStatement pst = conn.prepareStatement(" ");//准备执行语句
-            final Random random = new Random(100);
-            AtomicInteger ai = new AtomicInteger();
-            // 外层循环，总提交事务次数
-            for (int i = 1; i <= 100; i++) {
-                suffix = new StringBuffer();
-                // 第j次提交步长
-                for (int j = 1; j <= 10000; j++) {
-                    // 构建SQL后缀
-                    suffix.append("(");
-                    suffix.append(333333333 + ",");
-                    suffix.append(j + ",");
-                    suffix.append(i + ",");
-                    suffix.append(j + 5 + ",");
-                    suffix.append(8 + "");
-                    suffix.append("),");
-                }
-                // 构建完整SQL
-                String sql = prefix + suffix.substring(0, suffix.length() - 1);
-                // 添加执行SQL
-                pst.addBatch(sql);
-                // 执行操作
-                pst.executeBatch();
-                // 提交事务  使用insert批量插入，每次插入10万条数据就提交一次事务，节省了大量时间
-                conn.commit();
-                // 清空上一次添加的数据
-                suffix = new StringBuffer();
-            }
-            // 头等连接
-            pst.close();
-            conn.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        // 结束时间
-        Long end = System.currentTimeMillis();
-        // 耗时
-        System.out.println("1000万条数据插入花费时间 : " + (end - begin) / 1000 + " s");//107s
-        System.out.println("插入完成");
-    }
-
-    @Test
-    public static void insert(Connection conn) {
-        // 开始时间
-        Long begin = System.currentTimeMillis();
-        // sql前缀
-        String prefix = "INSERT INTO trace1 (id, earn, age, pwd) VALUES";
-        try {
-            // 保存sql后缀
-            StringBuffer suffix = new StringBuffer();
-            // 设置事务为非自动提交
-            conn.setAutoCommit(false);
-            // 比起st，pst会更好些
-            PreparedStatement pst = conn.prepareStatement(" ");//准备执行语句
-            AtomicInteger ai = new AtomicInteger();
-            // 外层循环，总提交事务次数
-//            for (int i = 1000000; i <= 2000000; i++) {
-//               String sql = "INSERT INTO trace1_1 VALUES (" + i + ",999999, 20, 66666666)";
+//    @Test
+//    public static void insertDownsampling(Connection conn) {
+//        // 开始时间
+//        Long begin = System.currentTimeMillis();
+//        // sql前缀
+//        //String prefix = "INSERT INTO trace1 (id, earn, age, pwd) VALUES";
+//        String prefix = " INSERT INTO test.trace_downsampling (id, varName, `timestamp`, value, downSamplingRate) VALUES";
+//        try {
+//            // 保存sql后缀
+//            StringBuffer suffix = new StringBuffer();
+//            // 设置事务为非自动提交
+//            conn.setAutoCommit(false);
+//            // 比起st，pst会更好些
+//            PreparedStatement pst = conn.prepareStatement(" ");//准备执行语句
+//            final Random random = new Random(100);
+//            AtomicInteger ai = new AtomicInteger();
+//            // 外层循环，总提交事务次数
+//            for (int i = 1; i <= 100; i++) {
+//                suffix = new StringBuffer();
+//                // 第j次提交步长
+//                for (int j = 1; j <= 10000; j++) {
+//                    // 构建SQL后缀
+//                    suffix.append("(");
+//                    suffix.append(333333333 + ",");
+//                    suffix.append(j + ",");
+//                    suffix.append(i + ",");
+//                    suffix.append(j + 5 + ",");
+//                    suffix.append(8 + "");
+//                    suffix.append("),");
+//                }
+//                // 构建完整SQL
+//                String sql = prefix + suffix.substring(0, suffix.length() - 1);
+//                // 添加执行SQL
 //                pst.addBatch(sql);
+//                // 执行操作
+//                pst.executeBatch();
+//                // 提交事务  使用insert批量插入，每次插入10万条数据就提交一次事务，节省了大量时间
+//                conn.commit();
+//                // 清空上一次添加的数据
+//                suffix = new StringBuffer();
 //            }
-            for (int i = 1; i <= 100; i++) {
-                suffix = new StringBuffer();
-                // 第j次提交步长
-                for (int j = 1; j <= 100000; j++) {
-                    // 构建SQL后缀
-                    suffix.append("(");
-                    suffix.append(ai.incrementAndGet() + ",");
-                    suffix.append(j + ",");
-                    suffix.append(i + ",");
-                    suffix.append(j + 5 + "");
-                    suffix.append("),");
-                }
-                // 构建完整SQL
-                String sql = prefix + suffix.substring(0, suffix.length() - 1);
-                // 添加执行SQL
-                pst.addBatch(sql);
-                // 执行操作
-                pst.executeBatch();
-                // 提交事务  使用insert批量插入，每次插入10万条数据就提交一次事务，节省了大量时间
-                conn.commit();
-                // 清空上一次添加的数据
-                suffix = new StringBuffer();
-            }
-            // 头等连接
-            pst.close();
-            conn.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-        // 结束时间
-        Long end = System.currentTimeMillis();
-        // 耗时
-        System.out.println("1000万条数据插入花费时间 : " + (end - begin) / 1000 + " s");//107s
-        System.out.println("插入完成");
-    }
+//            // 头等连接
+//            pst.close();
+//            conn.close();
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//        }
+//        // 结束时间
+//        Long end = System.currentTimeMillis();
+//        // 耗时
+//        System.out.println("1000万条数据插入花费时间 : " + (end - begin) / 1000 + " s");//107s
+//        System.out.println("插入完成");
+//    }
+//
+//    @Test
+//    public static void insert(Connection conn) {
+//        // 开始时间
+//        Long begin = System.currentTimeMillis();
+//        // sql前缀
+//        String prefix = "INSERT INTO trace1 (id, earn, age, pwd) VALUES";
+//        try {
+//            // 保存sql后缀
+//            StringBuffer suffix = new StringBuffer();
+//            // 设置事务为非自动提交
+//            conn.setAutoCommit(false);
+//            // 比起st，pst会更好些
+//            PreparedStatement pst = conn.prepareStatement(" ");//准备执行语句
+//            AtomicInteger ai = new AtomicInteger();
+//            // 外层循环，总提交事务次数
+
+    /// /            for (int i = 1000000; i <= 2000000; i++) {
+    /// /               String sql = "INSERT INTO trace1_1 VALUES (" + i + ",999999, 20, 66666666)";
+    /// /                pst.addBatch(sql);
+    /// /            }
+//            for (int i = 1; i <= 100; i++) {
+//                suffix = new StringBuffer();
+//                // 第j次提交步长
+//                for (int j = 1; j <= 100000; j++) {
+//                    // 构建SQL后缀
+//                    suffix.append("(");
+//                    suffix.append(ai.incrementAndGet() + ",");
+//                    suffix.append(j + ",");
+//                    suffix.append(i + ",");
+//                    suffix.append(j + 5 + "");
+//                    suffix.append("),");
+//                }
+//                // 构建完整SQL
+//                String sql = prefix + suffix.substring(0, suffix.length() - 1);
+//                // 添加执行SQL
+//                pst.addBatch(sql);
+//                // 执行操作
+//                pst.executeBatch();
+//                // 提交事务  使用insert批量插入，每次插入10万条数据就提交一次事务，节省了大量时间
+//                conn.commit();
+//                // 清空上一次添加的数据
+//                suffix = new StringBuffer();
+//            }
+//            // 头等连接
+//            pst.close();
+//            conn.close();
+//        } catch (SQLException e) {
+//            e.printStackTrace();
+//        }
+//        // 结束时间
+//        Long end = System.currentTimeMillis();
+//        // 耗时
+//        System.out.println("1000万条数据插入花费时间 : " + (end - begin) / 1000 + " s");//107s
+//        System.out.println("插入完成");
+//    }
 
     @Test
 
@@ -1060,31 +1053,31 @@ class DemoApplicationTests {
         System.out.println(StringUtils.join(filterList, ","));
     }
 
-    @Test
-    void testDownThread() throws ExecutionException, InterruptedException {
-        try {
-            Long reqStartTimestamp = 0L;
-            Long reqEndTimestamp = 9999999L;
-            Integer closestRate = 512;
-            MultiValueMap allMultiValueMap = new MultiValueMap();
-            List<Future<MultiValueMap>> resultList = new ArrayList<>();
-            final long start = System.currentTimeMillis();
-            final List<String> varList = Arrays.asList("v0", "v1","v2","v3","v4","v5","v6","v7","v8","v9");
-            CountDownLatch countDownLatch = new CountDownLatch(varList.size());
-            for (String varName : varList) {
-                Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingTableHandler("trace2_downsampling".concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate,10, null));
-                resultList.add(future);
-            }
-            countDownLatch.await();
-            for (Future<MultiValueMap> future : resultList) {
-                allMultiValueMap.putAll(future.get());
-            }
-            final long end = System.currentTimeMillis();
-            System.out.println("多线程花费了" + (end - start) + "ms");
-        } finally {
-            pool.shutdown();
-        }
-    }
+//    @Test
+//    void testDownThread() throws ExecutionException, InterruptedException {
+//        try {
+//            Long reqStartTimestamp = 0L;
+//            Long reqEndTimestamp = 9999999L;
+//            Integer closestRate = 512;
+//            MultiValueMap allMultiValueMap = new MultiValueMap();
+//            List<Future<MultiValueMap>> resultList = new ArrayList<>();
+//            final long start = System.currentTimeMillis();
+//            final List<String> varList = Arrays.asList("v0", "v1","v2","v3","v4","v5","v6","v7","v8","v9");
+//            CountDownLatch countDownLatch = new CountDownLatch(varList.size());
+//            for (String varName : varList) {
+//                Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingTableHandler("trace2_downsampling".concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate,10, null));
+//                resultList.add(future);
+//            }
+//            countDownLatch.await();
+//            for (Future<MultiValueMap> future : resultList) {
+//                allMultiValueMap.putAll(future.get());
+//            }
+//            final long end = System.currentTimeMillis();
+//            System.out.println("多线程花费了" + (end - start) + "ms");
+//        } finally {
+//            pool.shutdown();
+//        }
+//    }
 
     @Test
     void test3() throws ClassNotFoundException, SQLException {
@@ -1236,31 +1229,31 @@ class DemoApplicationTests {
         System.out.println("花费了" + (end - start));
     }
 
-    @Test
-    void testNewDownThread() throws ExecutionException, InterruptedException {
-        try {
-            Long reqStartTimestamp = 0L;
-            Long reqEndTimestamp = 1000000L;
-            Integer closestRate = 4096;
-            MultiValueMap allMultiValueMap = new MultiValueMap();
-            List<Future<MultiValueMap>> resultList = new ArrayList<>();
-            final long start = System.currentTimeMillis();
-            final List<String> varList = Arrays.asList("v0", "v1","v2","v3","v4","v5","v6","v7","v8","v9");
-            CountDownLatch countDownLatch = new CountDownLatch(varList.size());
-            for (String varName : varList) {
-                Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingTableHandler("trace3_downsampling".concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate,10, null));
-                resultList.add(future);
-            }
-            countDownLatch.await();
-            for (Future<MultiValueMap> future : resultList) {
-                allMultiValueMap.putAll(future.get());
-            }
-            final long end = System.currentTimeMillis();
-            System.out.println("多线程花费了" + (end - start) + "ms");
-        } finally {
-            pool.shutdown();
-        }
-    }
+//    @Test
+//    void testNewDownThread() throws ExecutionException, InterruptedException {
+//        try {
+//            Long reqStartTimestamp = 0L;
+//            Long reqEndTimestamp = 1000000L;
+//            Integer closestRate = 4096;
+//            MultiValueMap allMultiValueMap = new MultiValueMap();
+//            List<Future<MultiValueMap>> resultList = new ArrayList<>();
+//            final long start = System.currentTimeMillis();
+//            final List<String> varList = Arrays.asList("v0", "v1","v2","v3","v4","v5","v6","v7","v8","v9");
+//            CountDownLatch countDownLatch = new CountDownLatch(varList.size());
+//            for (String varName : varList) {
+//                Future<MultiValueMap> future = pool.submit(new QueryEachDownsamplingTableHandler("trace3_downsampling".concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate,10, null));
+//                resultList.add(future);
+//            }
+//            countDownLatch.await();
+//            for (Future<MultiValueMap> future : resultList) {
+//                allMultiValueMap.putAll(future.get());
+//            }
+//            final long end = System.currentTimeMillis();
+//            System.out.println("多线程花费了" + (end - start) + "ms");
+//        } finally {
+//            pool.shutdown();
+//        }
+//    }
 
 
     @Test
@@ -1348,33 +1341,34 @@ class DemoApplicationTests {
     void testfull3(){
 //        final List<UniPoint> list = LTThreeBuckets.sorted(singleVarDataList, 1);
 //        System.out.println(list);
-        final Set<String> aa1 = getQueryTable2(2100000L, 47890019L, "aa");
-        System.out.println(aa1);
+//        final Set<String> aa1 = getQueryTable2(2100000L, 47890019L, "aa");
+//        System.out.println(aa1);
     }
-    @Test
-    private Set<String> getQueryTable2(Long reqStartTimestamp, Long reqEndTimestamp, String parentTable) {
-        Set<String> set = new TreeSet<>();
-        if (reqStartTimestamp > reqEndTimestamp) {
-            throw new RuntimeException("开始时间戳不能大于结束时间戳!");
 
-        }
-        if (reqStartTimestamp > (long) (totalSize / shardNum) * (shardNum - 1) * 10) {
-            set.add(parentTable.concat("_").concat(String.valueOf(shardNum - 1)));
-        }
-        if (reqEndTimestamp < ((totalSize / shardNum) * 10)) {
-            set.add(parentTable.concat("_").concat(String.valueOf(0)));
-        }
-        int beginSlot = (int) (reqStartTimestamp / ((totalSize / shardNum) * 10));
-        int endSlot = (int) (reqEndTimestamp / ((totalSize / shardNum) * 10));
-        //防止endTimestamp请求过大导致实际没有那么多分表
-        if (endSlot > shardNum - 1) {
-            endSlot = shardNum - 1;
-        }
-        for (int i = beginSlot; i <= endSlot; i++) {
-            set.add(parentTable.concat("_").concat(String.valueOf(i)));
-        }
-        return set;
-    }
+    //    @Test
+//    private Set<String> getQueryTable2(Long reqStartTimestamp, Long reqEndTimestamp, String parentTable) {
+//        Set<String> set = new TreeSet<>();
+//        if (reqStartTimestamp > reqEndTimestamp) {
+//            throw new RuntimeException("开始时间戳不能大于结束时间戳!");
+//
+//        }
+//        if (reqStartTimestamp > (long) (totalSize / shardNum) * (shardNum - 1) * 10) {
+//            set.add(parentTable.concat("_").concat(String.valueOf(shardNum - 1)));
+//        }
+//        if (reqEndTimestamp < ((totalSize / shardNum) * 10)) {
+//            set.add(parentTable.concat("_").concat(String.valueOf(0)));
+//        }
+//        int beginSlot = (int) (reqStartTimestamp / ((totalSize / shardNum) * 10));
+//        int endSlot = (int) (reqEndTimestamp / ((totalSize / shardNum) * 10));
+//        //防止endTimestamp请求过大导致实际没有那么多分表
+//        if (endSlot > shardNum - 1) {
+//            endSlot = shardNum - 1;
+//        }
+//        for (int i = beginSlot; i <= endSlot; i++) {
+//            set.add(parentTable.concat("_").concat(String.valueOf(i)));
+//        }
+//        return set;
+//    }
     @Test
     void testDownsampling(){
          long start = System.currentTimeMillis();
@@ -1646,6 +1640,19 @@ class DemoApplicationTests {
                 traceTableRelatedInfoMapper.disSelect(ids);
         System.out.println(traceTableRelatedInfos.size());
 
+    }
+
+    @Test
+    void testTrace() {
+        Object[] fullTableParam = new Object[]{123000L};
+        String fullTableSql = "select " + "PLC_PRGr1" + " from " + "trace40_0" + " where id =? ";
+        final List<Map<String, Object>> list = jdbcTemplate.queryForList(fullTableSql, fullTableParam);
+        final Map<String, Object> lastMap = list.get(0);
+        final Set<String> keySet = lastMap.keySet();
+        for (String varName : keySet) {
+            System.out.println(varName);
+        }
+        System.out.println(list);
     }
 
 }
