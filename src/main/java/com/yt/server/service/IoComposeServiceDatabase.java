@@ -506,22 +506,15 @@ public class IoComposeServiceDatabase {
                         if (gap >= 1) {
                             //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
                             uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
+                            Long lastX = uniPointList.get(uniPointList.size() - 1).getX().longValueExact();
+                            addLastPoint(reqEndTimestamp, downsamplingTableName, lastX, uniPointList, downTableSuffix);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
-//                            logger.info("uniPointList大小为:{}", uniPointList.size());
-//                            closestRate = getSpecificClosestRate(gap);
-//                            writeTimestampToD3("gap="+gap+",uniPointList大小为:"+uniPointList.size()+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
-//                            if (!downTableSuffix.equals(otherDownTableSuffix)) { //没达到512倍再降一半
-//                                List<UniPoint> filterUniPointList = LTThreeBuckets.sorted(uniPointList, uniPointList.size() / 2);
-//                                Future<MultiValueMap> future = pool.submit(new DichotomyHigherHandler(filterUniPointList, mapList, dichotomyCountDownLatch, traceRule.getReqNum() / 3, traceRule.getReqNum() / 3, traceRule.getReqNum(), traceRule.getReqNum() / 3));
-//                                dichotomyResultList.add(future);
-//                            } else {
-//                                Future<MultiValueMap> future = pool.submit(new DichotomyHigherHandler(uniPointList, mapList, dichotomyCountDownLatch, traceRule.getReqNum() / 3, traceRule.getReqNum() / 3, traceRule.getReqNum(), traceRule.getReqNum() / 3));
-//                                dichotomyResultList.add(future);
-//                            }
                         } else if (gap == 0) {
                             //logger.info("gap = 0,uniPointList大小为:{}", uniPointList.size());
                             //writeTimestampToD3("gap=0,downTableSuffix=" + downTableSuffix + ",uniPointList大小为:" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
+                            Long lastX = uniPointList.get(uniPointList.size() - 1).getX().longValueExact();
+                            addLastPoint(reqEndTimestamp, downsamplingTableName, lastX, uniPointList, downTableSuffix);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
                         }
@@ -550,12 +543,17 @@ public class IoComposeServiceDatabase {
                     float innerF = (float) uniPointList.size() / (float) reqNum;
                     int innerGap = Math.round(innerF);
                     innerGap = uniPointList.size() / reqNum;
+                    String downTableSuffix = String.valueOf(closestRate);
                     if (innerGap >= 1) {
                         //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
                         uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
+                        Long lastX = uniPointList.get(uniPointList.size() - 1).getX().longValueExact();
+                        addLastPoint(reqEndTimestamp, downsamplingTableName, lastX, uniPointList, downTableSuffix);
                         MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                         allMultiValueMap.putAll(multiValueMap);
                     } else if (innerGap == 0) {
+                        Long lastX = uniPointList.get(uniPointList.size() - 1).getX().longValueExact();
+                        addLastPoint(reqEndTimestamp, downsamplingTableName, lastX, uniPointList, downTableSuffix);
                         MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                         allMultiValueMap.putAll(multiValueMap);
                     }
@@ -647,6 +645,29 @@ public class IoComposeServiceDatabase {
 //                    handleWasteTimeService.handleGc();
 //                }
 //            }
+        }
+    }
+
+    private void addLastPoint(Long reqEndTimestamp, String downsamplingTableName, Long lastX, List<UniPoint> uniPointList, String downTableSuffix) {
+        if (!lastX.equals(reqEndTimestamp)) {
+            //全量表查询最后一个数据
+            final String shardTable = getShardTable(downsamplingTableName.concat("_").concat(uniPointList.get(uniPointList.size() - 1).getVarName()).concat("_").concat(downTableSuffix), reqEndTimestamp, shardNum);
+            Object[] fullTableParam = new Object[]{reqEndTimestamp};
+            String fullTableSql = "select " + uniPointList.get(uniPointList.size() - 1).getVarName() + " from " + shardTable + " where id =? ";
+            final List<Map<String, Object>> list = jdbcTemplate.queryForList(fullTableSql, fullTableParam);
+            if (!CollectionUtils.isEmpty(list)) {
+                final Map<String, Object> lastMap = list.get(0);
+                final Set<String> keySet = lastMap.keySet();
+                for (String varName : keySet) {
+                    BigDecimal y = (BigDecimal) lastMap.get(varName);
+                    UniPoint uniPoint = new UniPoint(BigDecimal.valueOf(reqEndTimestamp),
+                            y, varName);
+                    uniPointList.add(uniPoint);
+                    logger.info("补全请求点{}", reqEndTimestamp);
+                }
+            } else {
+                logger.info("请求的时间点【{}】不存在", reqEndTimestamp);
+            }
         }
     }
 
