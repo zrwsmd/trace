@@ -9,22 +9,24 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 /**
- * 自适应降采样算法选择器 v4.0
+ * 自适应降采样算法选择器 v5.0
  * 核心优化：
  * 1. 改进点数分配策略，确保全局分布均匀
  * 2. 增强包络保护，避免丢失关键边界点
  * 3. 优化窗口划分，使用自适应窗口大小
  * 4. 改进权重计算，避免过度稀疏
+ * 5. 🔥 v5.0 新增：UNIFORM_WITH_EXTREMES 算法，确保极值点不丢失的同时保证均匀分布
+ * 6. 🔥 v5.0 改进：增强全局极值保护机制
  *
  * @author 赵瑞文
- * @version 4.0
+ * @version 5.0
  */
 public class AdaptiveDownsamplingSelector {
 
     private static final Logger logger = LoggerFactory.getLogger(AdaptiveDownsamplingSelector.class);
 
     // ==================== 配置参数（优化后）====================
-    private static final int BASE_WINDOW_SIZE = 200;  // 🔥 基础窗口大小
+    private static final int BASE_WINDOW_SIZE = 200; // 🔥 基础窗口大小
     private static final int MIN_POINTS_FOR_ANALYSIS = 10;
 
     // 信号特征阈值
@@ -35,8 +37,8 @@ public class AdaptiveDownsamplingSelector {
     private static final double NOISE_RATIO_THRESHOLD = 0.5;
 
     // 🔥 v4.0 新增：更严格的最小密度保护
-    private static final double MIN_DENSITY_RATIO = 0.02;  // 从1%提升到2%
-    private static final double MAX_WINDOW_SPARSITY = 0.5;  // 窗口最大稀疏度50%
+    private static final double MIN_DENSITY_RATIO = 0.02; // 从1%提升到2%
+    private static final double MAX_WINDOW_SPARSITY = 0.5; // 窗口最大稀疏度50%
 
     /**
      * 主入口：自适应降采样
@@ -91,7 +93,8 @@ public class AdaptiveDownsamplingSelector {
             int end = Math.min(start + adaptiveWindowSize, totalPoints);
             List<UniPoint> windowData = dataPoints.subList(start, end);
 
-            if (windowData.isEmpty()) continue;
+            if (windowData.isEmpty())
+                continue;
 
             windowSizes[i] = windowData.size();
             SignalFeatures features = extractFeatures(windowData);
@@ -108,8 +111,7 @@ public class AdaptiveDownsamplingSelector {
 
         // 🔥 v4.0 第二阶段：改进的点数分配策略
         int[] windowTargets = allocatePointsV4(
-                weights, windowSizes, numWindows, targetCount, totalWeightedSize
-        );
+                weights, windowSizes, numWindows, targetCount, totalWeightedSize);
 
         // 第三阶段：执行降采样
         List<UniPoint> result = new ArrayList<>(targetCount);
@@ -119,24 +121,23 @@ public class AdaptiveDownsamplingSelector {
             int end = Math.min(start + adaptiveWindowSize, totalPoints);
             List<UniPoint> windowData = dataPoints.subList(start, end);
 
-            if (windowData.isEmpty()) continue;
+            if (windowData.isEmpty())
+                continue;
 
             int windowTargetCount = windowTargets[i];
 
             // 应用算法
             DownsamplingAlgorithm algorithm = selectAlgorithm(
-                    signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount
-            );
+                    signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
 
             List<UniPoint> windowResult = applyAlgorithm(
-                    algorithm, windowData, windowTargetCount, allFeatures[i]
-            );
+                    algorithm, windowData, windowTargetCount, allFeatures[i]);
 
             // 去重边界点
             if (!result.isEmpty() && !windowResult.isEmpty()) {
                 if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
-                    windowResult = windowResult.size() > 1 ?
-                            windowResult.subList(1, windowResult.size()) : Collections.emptyList();
+                    windowResult = windowResult.size() > 1 ? windowResult.subList(1, windowResult.size())
+                            : Collections.emptyList();
                 }
             }
 
@@ -155,11 +156,11 @@ public class AdaptiveDownsamplingSelector {
 
         int windowSize;
         if (compressionRatio < 5) {
-            windowSize = BASE_WINDOW_SIZE / 2;  // 低压缩：小窗口
+            windowSize = BASE_WINDOW_SIZE / 2; // 低压缩：小窗口
         } else if (compressionRatio < 20) {
-            windowSize = BASE_WINDOW_SIZE;      // 中压缩：标准窗口
+            windowSize = BASE_WINDOW_SIZE; // 中压缩：标准窗口
         } else {
-            windowSize = BASE_WINDOW_SIZE * 2;  // 高压缩：大窗口
+            windowSize = BASE_WINDOW_SIZE * 2; // 高压缩：大窗口
         }
 
         // 确保至少有2个窗口
@@ -175,7 +176,7 @@ public class AdaptiveDownsamplingSelector {
         double baseWeight = features.normalizedVolatility * 1.2;
 
         // 🔥 关键改进：设置权重下限，避免任何窗口被过度压缩
-        baseWeight = Math.max(0.3, baseWeight);  // 最低30%的重要性
+        baseWeight = Math.max(0.3, baseWeight); // 最低30%的重要性
 
         // 复杂度加成
         double complexityBonus = (1.0 - features.linearity) * 0.3 + (1.0 - features.flatness) * 0.2;
@@ -190,7 +191,7 @@ public class AdaptiveDownsamplingSelector {
 
         // 🔥 综合权重，确保合理范围
         double finalWeight = baseWeight + complexityBonus + spikeBonus + periodicityBonus;
-        return Math.max(0.3, Math.min(3.0, finalWeight));  // 限制在0.3-3.0之间
+        return Math.max(0.3, Math.min(3.0, finalWeight)); // 限制在0.3-3.0之间
     }
 
     /**
@@ -202,18 +203,17 @@ public class AdaptiveDownsamplingSelector {
      */
     private static int[] allocatePointsV4(
             double[] weights, int[] windowSizes, int numWindows,
-            int targetCount, double totalWeightedSize
-    ) {
+            int targetCount, double totalWeightedSize) {
         int[] targets = new int[numWindows];
         int totalAllocated = 0;
 
         // 🔥 第一轮：基于权重的基础分配
         for (int i = 0; i < numWindows; i++) {
-            if (windowSizes[i] == 0) continue;
+            if (windowSizes[i] == 0)
+                continue;
 
             int baseAllocation = (int) Math.round(
-                    targetCount * (weights[i] * windowSizes[i]) / totalWeightedSize
-            );
+                    targetCount * (weights[i] * windowSizes[i]) / totalWeightedSize);
 
             targets[i] = baseAllocation;
             totalAllocated += baseAllocation;
@@ -221,7 +221,8 @@ public class AdaptiveDownsamplingSelector {
 
         // 🔥 第二轮：强制最小密度保护
         for (int i = 0; i < numWindows; i++) {
-            if (windowSizes[i] == 0) continue;
+            if (windowSizes[i] == 0)
+                continue;
 
             // 每个窗口至少保证2%的点
             int minPoints = Math.max(3, (int) Math.ceil(windowSizes[i] * MIN_DENSITY_RATIO));
@@ -258,11 +259,13 @@ public class AdaptiveDownsamplingSelector {
             int deficit = targetCount - totalAllocated;
             // 按权重排序，优先补充到重要的窗口
             Integer[] indices = new Integer[numWindows];
-            for (int i = 0; i < numWindows; i++) indices[i] = i;
+            for (int i = 0; i < numWindows; i++)
+                indices[i] = i;
             Arrays.sort(indices, (a, b) -> Double.compare(weights[b], weights[a]));
 
             for (int idx : indices) {
-                if (deficit <= 0) break;
+                if (deficit <= 0)
+                    break;
                 if (windowSizes[idx] > 0 && targets[idx] < windowSizes[idx]) {
                     targets[idx]++;
                     deficit--;
@@ -277,8 +280,7 @@ public class AdaptiveDownsamplingSelector {
      * 🔥 v4.0 改进的结果归一化（确保目标点数）
      */
     private static List<UniPoint> normalizeToTargetV4(
-            List<UniPoint> candidate, List<UniPoint> original, int targetCount
-    ) {
+            List<UniPoint> candidate, List<UniPoint> original, int targetCount) {
         if (targetCount <= 0) {
             return Collections.emptyList();
         }
@@ -334,12 +336,12 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 新增：填充空白区域
-     * 识别候选点中间隔较大的区域，从原始数据中补充点
+     * 🔥 v5.0 改进：填充空白区域
+     * 核心改进：在 gap 中选择中点位置的点，而不是第一个遇到的点
+     * 这样补点后分布更均匀，避免在 gap 起始处聚集
      */
     private static List<UniPoint> fillGaps(
-            List<UniPoint> candidate, List<UniPoint> original, int count
-    ) {
+            List<UniPoint> candidate, List<UniPoint> original, int count) {
         if (candidate.size() < 2 || original.isEmpty()) {
             return uniformDownsampling(original, count);
         }
@@ -360,30 +362,89 @@ public class AdaptiveDownsamplingSelector {
         // 按gap大小排序
         gaps.sort((a, b) -> Double.compare(b.size, a.size));
 
-        // 从最大的gaps中填充
+        // 🔥 v5.0 改进：在每个 gap 中选择中点位置的点
         List<UniPoint> filler = new ArrayList<>();
         Set<UniPoint> candidateSet = new HashSet<>(candidate);
 
         for (Gap gap : gaps) {
-            if (filler.size() >= count) break;
+            if (filler.size() >= count)
+                break;
 
-            // 在这个gap区间内，从原始数据中选择点
+            // 计算 gap 的中点位置
+            double midX = (gap.x1 + gap.x2) / 2.0;
+
+            // 在这个 gap 区间内，找到最接近中点的点
+            UniPoint closestToMid = null;
+            double minDistToMid = Double.MAX_VALUE;
+
+            List<UniPoint> pointsInGap = new ArrayList<>();
             for (UniPoint point : original) {
                 double x = point.getX().doubleValue();
                 if (x > gap.x1 && x < gap.x2 && !candidateSet.contains(point)) {
-                    filler.add(point);
-                    candidateSet.add(point);
-                    if (filler.size() >= count) break;
+                    pointsInGap.add(point);
+                    double dist = Math.abs(x - midX);
+                    if (dist < minDistToMid) {
+                        minDistToMid = dist;
+                        closestToMid = point;
+                    }
+                }
+            }
+
+            // 优先添加中点附近的点
+            if (closestToMid != null) {
+                filler.add(closestToMid);
+                candidateSet.add(closestToMid);
+            }
+
+            // 如果 gap 很大且还有配额，可以在 gap 中均匀添加更多点
+            if (filler.size() < count && pointsInGap.size() > 1) {
+                // 在 gap 中均匀选择额外的点（除了已添加的中点）
+                pointsInGap.remove(closestToMid);
+                pointsInGap.sort(Comparator.comparing(UniPoint::getX));
+
+                // 每个 gap 最多补充 2 个额外点（1/4 和 3/4 位置）
+                int extraQuota = Math.min(2, count - filler.size());
+                if (extraQuota > 0 && pointsInGap.size() >= 2) {
+                    // 选择 1/4 位置
+                    int idx1 = pointsInGap.size() / 4;
+                    if (!candidateSet.contains(pointsInGap.get(idx1))) {
+                        filler.add(pointsInGap.get(idx1));
+                        candidateSet.add(pointsInGap.get(idx1));
+                        extraQuota--;
+                    }
+                    // 选择 3/4 位置
+                    if (extraQuota > 0) {
+                        int idx2 = 3 * pointsInGap.size() / 4;
+                        if (idx2 != idx1 && !candidateSet.contains(pointsInGap.get(idx2))) {
+                            filler.add(pointsInGap.get(idx2));
+                            candidateSet.add(pointsInGap.get(idx2));
+                        }
+                    }
                 }
             }
         }
 
-        // 如果还不够，均匀补充
+        // 如果还不够，均匀补充（从原始数据中均匀采样）
         if (filler.size() < count) {
+            List<UniPoint> remaining = new ArrayList<>();
             for (UniPoint point : original) {
                 if (!candidateSet.contains(point)) {
-                    filler.add(point);
-                    if (filler.size() >= count) break;
+                    remaining.add(point);
+                }
+            }
+            if (!remaining.isEmpty()) {
+                // 🔥 均匀采样而不是顺序添加
+                int needed = count - filler.size();
+                if (remaining.size() <= needed) {
+                    filler.addAll(remaining);
+                } else {
+                    double step = (double) remaining.size() / needed;
+                    for (int i = 0; i < needed; i++) {
+                        int idx = (int) Math.round(i * step);
+                        if (idx >= remaining.size())
+                            idx = remaining.size() - 1;
+                        filler.add(remaining.get(idx));
+                    }
                 }
             }
         }
@@ -408,14 +469,12 @@ public class AdaptiveDownsamplingSelector {
      * 选择并应用算法
      */
     private static List<UniPoint> selectAndApplyAlgorithm(
-            List<UniPoint> dataPoints, int targetCount
-    ) {
+            List<UniPoint> dataPoints, int targetCount) {
         try {
             SignalFeatures features = extractFeatures(dataPoints);
             SignalType signalType = classifySignal(features);
             DownsamplingAlgorithm algorithm = selectAlgorithm(
-                    signalType, features, dataPoints.size(), targetCount
-            );
+                    signalType, features, dataPoints.size(), targetCount);
 
             List<UniPoint> result = applyAlgorithm(algorithm, dataPoints, targetCount, features);
 
@@ -423,8 +482,7 @@ public class AdaptiveDownsamplingSelector {
                 logger.debug(
                         "🔍 Var: {}, Type: {}, Algo: {}, In: {}, Out: {}, NormVol: {:.3f}",
                         dataPoints.get(0).getVarName(), signalType, algorithm,
-                        dataPoints.size(), result.size(), features.normalizedVolatility
-                );
+                        dataPoints.size(), result.size(), features.normalizedVolatility);
             }
 
             return result;
@@ -504,23 +562,25 @@ public class AdaptiveDownsamplingSelector {
         features.maxAbsDerivative = calculateMaxAbsDerivative(data);
         features.residualStdDev = trendInfo.residualStdDev;
         features.detrendedRange = trendInfo.residualRange;
-        features.trendStrength = features.range < 1e-6 ? 0.0 :
-                Math.min(1.0, Math.abs(trendInfo.slope) * n / (features.range + 1e-6));
-        features.envelopeGrowthRatio = trendInfo.residualRange < 1e-6 ? 0.0 :
-                Math.min(10.0, features.range / (trendInfo.residualRange + 1e-6));
+        features.trendStrength = features.range < 1e-6 ? 0.0
+                : Math.min(1.0, Math.abs(trendInfo.slope) * n / (features.range + 1e-6));
+        features.envelopeGrowthRatio = trendInfo.residualRange < 1e-6 ? 0.0
+                : Math.min(10.0, features.range / (trendInfo.residualRange + 1e-6));
 
         return features;
     }
 
     private static double calculateNormalizedVolatility(List<Double> values) {
-        if (values == null || values.size() < 2) return 0.0;
+        if (values == null || values.size() < 2)
+            return 0.0;
 
         List<Double> normalizedDiffs = new ArrayList<>();
         for (int i = 1; i < values.size(); i++) {
             double y0 = values.get(i - 1);
             double y1 = values.get(i);
             double avg = (Math.abs(y0) + Math.abs(y1)) / 2.0;
-            if (avg < 1e-6) avg = 1.0;
+            if (avg < 1e-6)
+                avg = 1.0;
             normalizedDiffs.add(Math.abs(y1 - y0) / avg);
         }
 
@@ -528,12 +588,12 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static double calculateVolatility(List<UniPoint> data, double range) {
-        if (range < 1e-6) return 0.0;
+        if (range < 1e-6)
+            return 0.0;
         double totalDistance = 0;
         for (int i = 1; i < data.size(); i++) {
             totalDistance += Math.abs(
-                    data.get(i).getY().doubleValue() - data.get(i - 1).getY().doubleValue()
-            );
+                    data.get(i).getY().doubleValue() - data.get(i - 1).getY().doubleValue());
         }
         return totalDistance / range;
     }
@@ -639,7 +699,8 @@ public class AdaptiveDownsamplingSelector {
 
         if (stdDev < 1e-6) {
             List<Double> normalized = new ArrayList<>(values.size());
-            for (Double value : values) normalized.add(value - mean);
+            for (Double value : values)
+                normalized.add(value - mean);
             return normalized;
         }
 
@@ -653,7 +714,8 @@ public class AdaptiveDownsamplingSelector {
 
     private static double calculateAutocorrelationNormalized(List<Double> normalized, int lag) {
         int n = normalized.size();
-        if (lag >= n || lag <= 0) return 0.0;
+        if (lag >= n || lag <= 0)
+            return 0.0;
         double sum = 0;
         for (int i = 0; i < n - lag; i++) {
             sum += normalized.get(i) * normalized.get(i + lag);
@@ -663,7 +725,8 @@ public class AdaptiveDownsamplingSelector {
 
     private static double calculateLinearity(List<UniPoint> data) {
         int n = data.size();
-        if (n < 3) return 0.0;
+        if (n < 3)
+            return 0.0;
 
         double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
         for (int i = 0; i < n; i++) {
@@ -676,7 +739,8 @@ public class AdaptiveDownsamplingSelector {
 
         double meanY = sumY / n;
         double denominator = n * sumX2 - sumX * sumX;
-        if (Math.abs(denominator) < 1e-6) return 0.0;
+        if (Math.abs(denominator) < 1e-6)
+            return 0.0;
 
         double slope = (n * sumXY - sumX * sumY) / denominator;
         double intercept = meanY - slope * (n - 1) / 2.0;
@@ -694,7 +758,8 @@ public class AdaptiveDownsamplingSelector {
 
     private static double calculateAutocorrelation(List<UniPoint> data, int lag) {
         int n = data.size();
-        if (lag >= n || lag <= 0) return 0.0;
+        if (lag >= n || lag <= 0)
+            return 0.0;
 
         double mean = data.stream().mapToDouble(p -> p.getY().doubleValue()).average().orElse(0);
         double numerator = 0, denominator = 0;
@@ -714,13 +779,13 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static int detectSteps(List<UniPoint> data) {
-        if (data.size() < 3) return 0;
+        if (data.size() < 3)
+            return 0;
 
         List<Double> derivatives = new ArrayList<>();
         for (int i = 0; i < data.size() - 1; i++) {
             derivatives.add(Math.abs(
-                    data.get(i + 1).getY().doubleValue() - data.get(i).getY().doubleValue()
-            ));
+                    data.get(i + 1).getY().doubleValue() - data.get(i).getY().doubleValue()));
         }
 
         double mean = derivatives.stream().mapToDouble(d -> d).average().orElse(0);
@@ -730,13 +795,15 @@ public class AdaptiveDownsamplingSelector {
 
         int count = 0;
         for (double d : derivatives) {
-            if (d > threshold && d > 0.01) count++;
+            if (d > threshold && d > 0.01)
+                count++;
         }
         return count;
     }
 
     private static double calculateNoiseRatio(List<UniPoint> data) {
-        if (data.size() < 3) return 0.0;
+        if (data.size() < 3)
+            return 0.0;
 
         double totalChange = 0, smoothChange = 0;
         for (int i = 1; i < data.size() - 1; i++) {
@@ -751,7 +818,8 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static int countZeroCrossings(List<UniPoint> data, double baseline) {
-        if (data.size() < 2) return 0;
+        if (data.size() < 2)
+            return 0;
 
         int count = 0;
         boolean above = data.get(0).getY().doubleValue() > baseline;
@@ -769,8 +837,7 @@ public class AdaptiveDownsamplingSelector {
         double max = 0;
         for (int i = 1; i < data.size(); i++) {
             double diff = Math.abs(
-                    data.get(i).getY().doubleValue() - data.get(i - 1).getY().doubleValue()
-            );
+                    data.get(i).getY().doubleValue() - data.get(i - 1).getY().doubleValue());
             max = Math.max(max, diff);
         }
         return max;
@@ -783,8 +850,10 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static SignalType classifySignal(SignalFeatures features) {
-        if (features.flatness < FLATNESS_THRESHOLD) return SignalType.FLAT;
-        if (features.linearity > LINEARITY_THRESHOLD && features.noiseRatio < 0.2) return SignalType.LINEAR;
+        if (features.flatness < FLATNESS_THRESHOLD)
+            return SignalType.FLAT;
+        if (features.linearity > LINEARITY_THRESHOLD && features.noiseRatio < 0.2)
+            return SignalType.LINEAR;
         if (features.periodicity > PERIODICITY_THRESHOLD) {
             if (features.envelopeGrowthRatio > 1.5 && Math.abs(features.trendSlope) > 0.01) {
                 return SignalType.AMPLITUDE_MODULATED;
@@ -809,21 +878,26 @@ public class AdaptiveDownsamplingSelector {
     // ==================== 算法选择与应用 ====================
 
     enum DownsamplingAlgorithm {
-        KEEP_FIRST_LAST, LTTB, MIN_MAX, UNIFORM, PEAK_DETECTION, ADAPTIVE_LTTB, HYBRID_ENVELOPE
+        KEEP_FIRST_LAST, LTTB, MIN_MAX, UNIFORM, PEAK_DETECTION, ADAPTIVE_LTTB, HYBRID_ENVELOPE, UNIFORM_WITH_EXTREMES
     }
 
     private static DownsamplingAlgorithm selectAlgorithm(
-            SignalType signalType, SignalFeatures features, int inputSize, int targetSize
-    ) {
+            SignalType signalType, SignalFeatures features, int inputSize, int targetSize) {
         double compression = (double) inputSize / targetSize;
 
         if (features.flatness < FLATNESS_THRESHOLD) {
             return DownsamplingAlgorithm.KEEP_FIRST_LAST;
         }
 
+        // 🔥 v5.0 改进：高压缩比情况下的算法选择
         if (compression > 10.0) {
             if (signalType == SignalType.PERIODIC || signalType == SignalType.AMPLITUDE_MODULATED) {
                 return DownsamplingAlgorithm.HYBRID_ENVELOPE;
+            }
+            // 🔥 v5.0：高压缩比下的噪声/复杂数据使用 UNIFORM_WITH_EXTREMES 确保均匀分布
+            if (signalType == SignalType.NOISE || signalType == SignalType.TREND_NOISE
+                    || signalType == SignalType.COMPLEX) {
+                return DownsamplingAlgorithm.UNIFORM_WITH_EXTREMES;
             }
             return (features.linearity > 0.99) ? DownsamplingAlgorithm.LTTB : DownsamplingAlgorithm.MIN_MAX;
         }
@@ -832,8 +906,11 @@ public class AdaptiveDownsamplingSelector {
             case PERIODIC:
             case AMPLITUDE_MODULATED:
                 return DownsamplingAlgorithm.HYBRID_ENVELOPE;
-            case COMPLEX:
+            case NOISE:
             case TREND_NOISE:
+                // 🔥 v5.0：噪声型数据使用 UNIFORM_WITH_EXTREMES，确保极值不丢失且分布均匀
+                return DownsamplingAlgorithm.UNIFORM_WITH_EXTREMES;
+            case COMPLEX:
                 return DownsamplingAlgorithm.ADAPTIVE_LTTB;
             case STEP:
             case PULSE:
@@ -846,11 +923,13 @@ public class AdaptiveDownsamplingSelector {
 
     private static List<UniPoint> applyAlgorithm(
             DownsamplingAlgorithm algorithm, List<UniPoint> data,
-            int targetCount, SignalFeatures features
-    ) {
-        if (data.isEmpty()) return Collections.emptyList();
-        if (data.size() <= targetCount + 2) return new ArrayList<>(data);
-        if (targetCount < 2) targetCount = 2;
+            int targetCount, SignalFeatures features) {
+        if (data.isEmpty())
+            return Collections.emptyList();
+        if (data.size() <= targetCount + 2)
+            return new ArrayList<>(data);
+        if (targetCount < 2)
+            targetCount = 2;
 
         switch (algorithm) {
             case KEEP_FIRST_LAST:
@@ -867,26 +946,31 @@ public class AdaptiveDownsamplingSelector {
                 return adaptiveLTTB(data, targetCount);
             case HYBRID_ENVELOPE:
                 return hybridEnvelopeDownsampling(data, targetCount, features);
+            case UNIFORM_WITH_EXTREMES:
+                // 🔥 v5.0 新增：极值点保护 + 均匀分布算法
+                return uniformWithExtremesDownsampling(data, targetCount);
             default:
                 return LTThreeBuckets.sorted(data, targetCount);
         }
     }
 
     private static List<UniPoint> hybridEnvelopeDownsampling(
-            List<UniPoint> data, int targetCount, SignalFeatures features
-    ) {
-        if (CollectionUtils.isEmpty(data) || targetCount <= 0) return data;
+            List<UniPoint> data, int targetCount, SignalFeatures features) {
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0)
+            return data;
 
         int safeTarget = Math.min(Math.max(targetCount, 2), data.size());
-        if (safeTarget <= 5) return MinMaxDownsampler.downsample(data, safeTarget);
+        if (safeTarget <= 5)
+            return MinMaxDownsampler.downsample(data, safeTarget);
 
         // 🔥 v4.0 改进：增加包络点的配额
-        int envelopeQuota = Math.max(4, (int) Math.round(safeTarget * 0.4));  // 从35%提升到40%
-        int centerQuota = Math.max(2, (int) Math.round(safeTarget * 0.3));    // 从35%降低到30%
+        int envelopeQuota = Math.max(4, (int) Math.round(safeTarget * 0.4)); // 从35%提升到40%
+        int centerQuota = Math.max(2, (int) Math.round(safeTarget * 0.3)); // 从35%降低到30%
         int fillerQuota = Math.max(0, safeTarget - envelopeQuota - centerQuota);
 
         List<UniPoint> envelope = MinMaxDownsampler.downsample(data, envelopeQuota);
-        if (CollectionUtils.isEmpty(envelope)) return LTThreeBuckets.sorted(data, safeTarget);
+        if (CollectionUtils.isEmpty(envelope))
+            return LTThreeBuckets.sorted(data, safeTarget);
 
         List<UniPoint> centralBand = sampleCentralBand(data, centerQuota);
         List<UniPoint> filler = Collections.emptyList();
@@ -894,34 +978,35 @@ public class AdaptiveDownsamplingSelector {
         int remaining = safeTarget - envelope.size() - centralBand.size();
         if (remaining > 0) {
             boolean noisy = features != null && features.noiseRatio > NOISE_RATIO_THRESHOLD;
-            filler = noisy ?
-                    LTThreeBuckets.sorted(data, Math.max(remaining, 2)) :
-                    uniformDownsampling(data, Math.max(remaining, 2));
+            filler = noisy ? LTThreeBuckets.sorted(data, Math.max(remaining, 2))
+                    : uniformDownsampling(data, Math.max(remaining, 2));
         }
 
         LinkedHashSet<UniPoint> merged = new LinkedHashSet<>(safeTarget);
         merged.addAll(envelope);
         merged.addAll(centralBand);
         for (UniPoint point : filler) {
-            if (merged.size() >= safeTarget) break;
+            if (merged.size() >= safeTarget)
+                break;
             merged.add(point);
         }
 
         if (merged.size() < safeTarget) {
             for (UniPoint point : data) {
-                if (merged.add(point) && merged.size() >= safeTarget) break;
+                if (merged.add(point) && merged.size() >= safeTarget)
+                    break;
             }
         }
 
         List<UniPoint> mergedList = new ArrayList<>(merged);
         mergedList.sort(Comparator.comparing(UniPoint::getX));
 
-        return mergedList.size() > safeTarget ?
-                balancedUniformTrim(mergedList, safeTarget) : mergedList;
+        return mergedList.size() > safeTarget ? balancedUniformTrim(mergedList, safeTarget) : mergedList;
     }
 
     private static List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) {
-        if (quota <= 0 || CollectionUtils.isEmpty(data)) return Collections.emptyList();
+        if (quota <= 0 || CollectionUtils.isEmpty(data))
+            return Collections.emptyList();
 
         int bucketCount = Math.min(Math.max(1, quota * 2), data.size());
         double bucketWidth = (double) data.size() / bucketCount;
@@ -930,10 +1015,12 @@ public class AdaptiveDownsamplingSelector {
         for (int i = 0; i < bucketCount && selected.size() < quota; i++) {
             int start = (int) Math.floor(i * bucketWidth);
             int end = (int) Math.min(data.size(), Math.round((i + 1) * bucketWidth));
-            if (start >= end) continue;
+            if (start >= end)
+                continue;
 
             double sum = 0;
-            for (int j = start; j < end; j++) sum += data.get(j).getY().doubleValue();
+            for (int j = start; j < end; j++)
+                sum += data.get(j).getY().doubleValue();
             double baseline = sum / (end - start);
 
             UniPoint closest = null;
@@ -946,10 +1033,12 @@ public class AdaptiveDownsamplingSelector {
                 }
             }
 
-            if (closest != null) selected.add(closest);
+            if (closest != null)
+                selected.add(closest);
         }
 
-        if (selected.isEmpty()) return uniformDownsampling(data, quota);
+        if (selected.isEmpty())
+            return uniformDownsampling(data, quota);
         selected.sort(Comparator.comparing(UniPoint::getX));
         return selected.size() > quota ? balancedUniformTrim(selected, quota) : selected;
     }
@@ -958,7 +1047,8 @@ public class AdaptiveDownsamplingSelector {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0 || data.size() <= targetCount) {
             return data;
         }
-        if (targetCount == 1) return Collections.singletonList(data.get(0));
+        if (targetCount == 1)
+            return Collections.singletonList(data.get(0));
 
         List<UniPoint> trimmed = new ArrayList<>(targetCount);
         trimmed.add(data.get(0));
@@ -967,7 +1057,8 @@ public class AdaptiveDownsamplingSelector {
 
         for (int i = 1; i < targetCount - 1; i++) {
             int index = (int) Math.round(cursor);
-            if (index >= data.size() - 1) index = data.size() - 2;
+            if (index >= data.size() - 1)
+                index = data.size() - 2;
             trimmed.add(data.get(index));
             cursor += step;
         }
@@ -975,8 +1066,155 @@ public class AdaptiveDownsamplingSelector {
         return trimmed;
     }
 
+    /**
+     * 🔥 v5.0 新增：极值点保护 + 均匀分布算法
+     * 核心思路：
+     * 1. 首先识别并保护全局极值点（全局最大值、全局最小值）
+     * 2. 识别局部极值点（局部峰值和谷值）
+     * 3. 剩余配额均匀分布采样
+     * 4. 合并去重并按时间排序
+     * <p>
+     * 这确保了：
+     * - 极值点（特征明显的点）永远不会丢失
+     * - 采样点在时间轴上分布均匀
+     */
+    private static List<UniPoint> uniformWithExtremesDownsampling(List<UniPoint> data, int targetCount) {
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0) {
+            return Collections.emptyList();
+        }
+        if (data.size() <= targetCount) {
+            return new ArrayList<>(data);
+        }
+        if (targetCount < 2) {
+            return Collections.singletonList(data.get(0));
+        }
+
+        // ========== 第一步：识别全局极值点 ==========
+        UniPoint globalMin = data.get(0);
+        UniPoint globalMax = data.get(0);
+        int globalMinIdx = 0;
+        int globalMaxIdx = 0;
+
+        for (int i = 1; i < data.size(); i++) {
+            double y = data.get(i).getY().doubleValue();
+            if (y < globalMin.getY().doubleValue()) {
+                globalMin = data.get(i);
+                globalMinIdx = i;
+            }
+            if (y > globalMax.getY().doubleValue()) {
+                globalMax = data.get(i);
+                globalMaxIdx = i;
+            }
+        }
+
+        // ========== 第二步：识别局部极值点 ==========
+        // 根据目标点数动态调整局部极值的配额（约占15%）
+        int localExtremeQuota = Math.max(2, (int) Math.round(targetCount * 0.15));
+        List<PointImportance> localExtremes = new ArrayList<>();
+
+        for (int i = 1; i < data.size() - 1; i++) {
+            double prev = data.get(i - 1).getY().doubleValue();
+            double curr = data.get(i).getY().doubleValue();
+            double next = data.get(i + 1).getY().doubleValue();
+
+            // 局部极大值
+            if (curr > prev && curr > next) {
+                double prominence = Math.min(curr - prev, curr - next);
+                localExtremes.add(new PointImportance(i, prominence));
+            }
+            // 局部极小值
+            else if (curr < prev && curr < next) {
+                double prominence = Math.min(prev - curr, next - curr);
+                localExtremes.add(new PointImportance(i, prominence));
+            }
+        }
+
+        // 按显著性排序，取最重要的局部极值
+        localExtremes.sort((a, b) -> Double.compare(b.importance, a.importance));
+
+        // ========== 第三步：构建必须保留的点集 ==========
+        Set<Integer> mustKeepIndices = new LinkedHashSet<>();
+
+        // 始终保留首尾点
+        mustKeepIndices.add(0);
+        mustKeepIndices.add(data.size() - 1);
+
+        // 保留全局极值
+        mustKeepIndices.add(globalMinIdx);
+        mustKeepIndices.add(globalMaxIdx);
+
+        // 保留最重要的局部极值（不超过配额）
+        int localAdded = 0;
+        for (PointImportance extreme : localExtremes) {
+            if (localAdded >= localExtremeQuota)
+                break;
+            if (!mustKeepIndices.contains(extreme.index)) {
+                mustKeepIndices.add(extreme.index);
+                localAdded++;
+            }
+        }
+
+        // ========== 第四步：均匀填充剩余配额 ==========
+        int uniformQuota = targetCount - mustKeepIndices.size();
+
+        if (uniformQuota > 0) {
+            // 计算均匀采样的步长
+            double step = (double) (data.size() - 1) / (uniformQuota + 1);
+
+            for (int i = 1; i <= uniformQuota; i++) {
+                int index = (int) Math.round(i * step);
+                if (index >= data.size())
+                    index = data.size() - 1;
+                if (index < 0)
+                    index = 0;
+
+                // 如果这个位置已经被极值占用，尝试找附近的点
+                if (mustKeepIndices.contains(index)) {
+                    // 向两边搜索最近的未占用位置
+                    int left = index - 1;
+                    int right = index + 1;
+                    while (left >= 0 || right < data.size()) {
+                        if (left >= 0 && !mustKeepIndices.contains(left)) {
+                            index = left;
+                            break;
+                        }
+                        if (right < data.size() && !mustKeepIndices.contains(right)) {
+                            index = right;
+                            break;
+                        }
+                        left--;
+                        right++;
+                    }
+                }
+
+                mustKeepIndices.add(index);
+
+                // 如果已经达到目标数量，停止添加
+                if (mustKeepIndices.size() >= targetCount)
+                    break;
+            }
+        }
+
+        // ========== 第五步：构建结果并排序 ==========
+        List<UniPoint> result = new ArrayList<>(mustKeepIndices.size());
+        List<Integer> sortedIndices = new ArrayList<>(mustKeepIndices);
+        Collections.sort(sortedIndices);
+
+        for (int idx : sortedIndices) {
+            result.add(data.get(idx));
+        }
+
+        // 如果结果过多（由于极值点较多），按均匀方式裁剪
+        if (result.size() > targetCount) {
+            return balancedUniformTrim(result, targetCount);
+        }
+
+        return result;
+    }
+
     private static List<UniPoint> keepFirstLast(List<UniPoint> data) {
-        if (data.size() <= 2) return data;
+        if (data.size() <= 2)
+            return data;
         List<UniPoint> result = new ArrayList<>(2);
         result.add(data.get(0));
         result.add(data.get(data.size() - 1));
@@ -984,23 +1222,28 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static List<UniPoint> uniformDownsampling(List<UniPoint> data, int targetCount) {
-        if (CollectionUtils.isEmpty(data) || targetCount <= 0) return Collections.emptyList();
-        if (targetCount >= data.size()) return new ArrayList<>(data);
-        if (targetCount == 1) return Collections.singletonList(data.get(data.size() / 2));
+        if (CollectionUtils.isEmpty(data) || targetCount <= 0)
+            return Collections.emptyList();
+        if (targetCount >= data.size())
+            return new ArrayList<>(data);
+        if (targetCount == 1)
+            return Collections.singletonList(data.get(data.size() / 2));
 
         List<UniPoint> result = new ArrayList<>(targetCount);
         double step = (double) (data.size() - 1) / (targetCount - 1);
 
         for (int i = 0; i < targetCount; i++) {
             int index = (int) Math.round(i * step);
-            if (index >= data.size()) index = data.size() - 1;
+            if (index >= data.size())
+                index = data.size() - 1;
             result.add(data.get(index));
         }
         return result;
     }
 
     private static List<UniPoint> peakDetectionDownsampling(List<UniPoint> data, int targetCount) {
-        if (data.size() <= targetCount) return data;
+        if (data.size() <= targetCount)
+            return data;
 
         List<PointImportance> importances = new ArrayList<>();
         importances.add(new PointImportance(0, Double.MAX_VALUE));
@@ -1024,14 +1267,16 @@ public class AdaptiveDownsamplingSelector {
         Collections.sort(sortedIndices);
 
         List<UniPoint> result = new ArrayList<>();
-        for (int idx : sortedIndices) result.add(data.get(idx));
+        for (int idx : sortedIndices)
+            result.add(data.get(idx));
         return result;
     }
 
     private static List<UniPoint> adaptiveLTTB(List<UniPoint> data, int targetCount) {
         int n = data.size();
         int numSegments = Math.min(10, n / 10);
-        if (numSegments < 2) return LTThreeBuckets.sorted(data, targetCount);
+        if (numSegments < 2)
+            return LTThreeBuckets.sorted(data, targetCount);
 
         int segmentSize = n / numSegments;
         List<Double> segmentComplexity = new ArrayList<>();
@@ -1054,13 +1299,13 @@ public class AdaptiveDownsamplingSelector {
             int segmentTarget = (int) Math.round(targetCount * segmentComplexity.get(i) / totalComplexity);
             segmentTarget = Math.max(2, segmentTarget);
 
-            List<UniPoint> segmentResult = segment.size() <= segmentTarget + 2 ?
-                    new ArrayList<>(segment) : LTThreeBuckets.sorted(segment, segmentTarget);
+            List<UniPoint> segmentResult = segment.size() <= segmentTarget + 2 ? new ArrayList<>(segment)
+                    : LTThreeBuckets.sorted(segment, segmentTarget);
 
             if (!result.isEmpty() && !segmentResult.isEmpty()) {
                 if (pointsEqual(result.get(result.size() - 1), segmentResult.get(0))) {
-                    segmentResult = segmentResult.size() > 1 ?
-                            segmentResult.subList(1, segmentResult.size()) : Collections.emptyList();
+                    segmentResult = segmentResult.size() > 1 ? segmentResult.subList(1, segmentResult.size())
+                            : Collections.emptyList();
                 }
             }
 
@@ -1071,12 +1316,12 @@ public class AdaptiveDownsamplingSelector {
     }
 
     private static double calculateSegmentComplexity(List<UniPoint> segment) {
-        if (segment.size() < 2) return 1.0;
+        if (segment.size() < 2)
+            return 1.0;
         double totalChange = 0;
         for (int i = 1; i < segment.size(); i++) {
             totalChange += Math.abs(
-                    segment.get(i).getY().doubleValue() - segment.get(i - 1).getY().doubleValue()
-            );
+                    segment.get(i).getY().doubleValue() - segment.get(i - 1).getY().doubleValue());
         }
         return totalChange + 1.0;
     }
@@ -1084,6 +1329,7 @@ public class AdaptiveDownsamplingSelector {
     static class PointImportance {
         int index;
         double importance;
+
         PointImportance(int index, double importance) {
             this.index = index;
             this.importance = importance;
