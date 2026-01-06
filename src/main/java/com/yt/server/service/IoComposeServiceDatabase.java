@@ -505,7 +505,7 @@ public class IoComposeServiceDatabase {
                         gap = uniPointList.size() / reqNum;
                         if (gap >= 1) {
                             //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
-                            uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
+                            uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
                         } else if (gap == 0) {
@@ -542,7 +542,7 @@ public class IoComposeServiceDatabase {
                     String downTableSuffix = String.valueOf(closestRate);
                     if (innerGap >= 1) {
                         //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
-                        uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum);
+                        uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                         MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                         allMultiValueMap.putAll(multiValueMap);
                     } else if (innerGap == 0) {
@@ -573,7 +573,6 @@ public class IoComposeServiceDatabase {
 //            }
         }
     }
-
 
 
     private List<Pair<String, BigDecimal[]>> handleLagDownsampling(Set<Map.Entry<BigDecimal, BigDecimal>> entrySet) {
@@ -1137,7 +1136,7 @@ public class IoComposeServiceDatabase {
         String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(gap * parentDownsamplingRate));
         downsamplingTableName = BaseUtils.earseLastPoint(downsamplingTableName);
         if (bucketSize > 0) {
-            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize);
+            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.ASYNC_TYPE);
         }
         List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsamplingDataList, 2);
         BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);

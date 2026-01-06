@@ -23,6 +23,22 @@ import java.util.*;
  */
 public class AdaptiveDownsamplingSelector {
 
+    public enum ExecType {
+        SYNC_TYPE("sync"),
+        ASYNC_TYPE("async");
+
+        private final String code;
+
+        ExecType(String code) {
+            this.code = code;
+        }
+
+        public String getCode() {
+            return code;
+        }
+    }
+
+
     private static final Logger logger = LoggerFactory.getLogger(AdaptiveDownsamplingSelector.class);
 
     // ==================== 配置参数（优化后）====================
@@ -43,7 +59,11 @@ public class AdaptiveDownsamplingSelector {
     /**
      * 主入口：自适应降采样
      */
-    public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount) {
+    public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount, ExecType type) {
+        if (type == AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE) {
+            logger.info("Downsample data points: " + dataPoints.size());
+            logger.info("Downsample target count: " + targetCount);
+        }
         if (CollectionUtils.isEmpty(dataPoints)) {
             return Collections.emptyList();
         }
