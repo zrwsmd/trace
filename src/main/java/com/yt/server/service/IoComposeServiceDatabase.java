@@ -402,7 +402,7 @@ public class IoComposeServiceDatabase {
     }
 
     public MultiValueMap getFileHandleExecutor(RequestParameter vsCodeReqParam) throws Exception {
-        System.out.println("getFileHandleExecutor=" + Thread.currentThread().getName());
+        //System.out.println("getFileHandleExecutor=" + Thread.currentThread().getName());
         Long reqStartTimestamp = vsCodeReqParam.getStartTimestamp();
         Long reqEndTimestamp = vsCodeReqParam.getEndTimestamp();
         if (reqStartTimestamp == null) {
@@ -961,7 +961,7 @@ public class IoComposeServiceDatabase {
         VsCodeRespVo vsCodeRespVo = new VsCodeRespVo();
         Long requestId = vsCodeReqParam.getRequestId();
         try {
-            long start = System.currentTimeMillis();
+            //long start = System.currentTimeMillis();
             //删除主表和降采样表
             final List<TraceTableRelatedInfo> traceTableRelatedInfoList = traceTableRelatedInfoMapper.selectAll();
             for (TraceTableRelatedInfo traceTableRelatedInfo : traceTableRelatedInfoList) {
@@ -991,8 +991,8 @@ public class IoComposeServiceDatabase {
             jdbcTemplate.update(traceFieldMetaDeleteSql);
             String traceNumInfoDeleteSql = "DELETE FROM table_num_info";
             jdbcTemplate.update(traceNumInfoDeleteSql);
-            long end = System.currentTimeMillis();
-            System.out.println("消耗了" + (end - start) + "ms");
+            //long end = System.currentTimeMillis();
+            //System.out.println("消耗了" + (end - start) + "ms");
         } catch (Exception e) {
             vsCodeRespVo.setRet(false);
             logger.error("trace gc 异常,报错信息为: " + e);
@@ -1052,7 +1052,7 @@ public class IoComposeServiceDatabase {
             }
             fieldNameList.add(0, VarConst.ID);
             final long middle = System.currentTimeMillis();
-            System.out.println("解析花费了: " + (middle - start));
+            //System.out.println("解析花费了: " + (middle - start));
             traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             if (!"traceStart".equalsIgnoreCase(traceTableRelatedInfo.getTraceStatus())) {
                 logger.warn("current trace status is {}, ignore this request", traceTableRelatedInfo.getTraceStatus());
@@ -1144,7 +1144,7 @@ public class IoComposeServiceDatabase {
     }
 
     public MultiValueMap getSingleTimestampFileHandleExecutor(VsCodeReqParam vsCodeReqParam) throws Exception {
-        System.out.println("getSingleTimestampFileHandleExecutor=" + Thread.currentThread().getName());
+        //System.out.println("getSingleTimestampFileHandleExecutor=" + Thread.currentThread().getName());
         List<String> originalVarList = vsCodeReqParam.getVarList();
         List<String> filterVarList = new ArrayList<>();
         List<Map<String, String>> mapList = new ArrayList<>();
