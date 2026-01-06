@@ -1481,7 +1481,13 @@ class DemoApplicationTests {
                 allMultiValueMap.putAll(multiValueMap);
             }
         }
-        System.out.println(allMultiValueMap);
+        final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
+        for (Map.Entry<BigDecimal, BigDecimal> entry : entrySet) {
+            String key = String.valueOf(entry.getKey());
+            List valueList = (List) entry.getValue();
+            System.out.println(key);
+        }
+
       //  handleDownTailData(0L, 85440000L, "trace302", mapList, fieldName, allMultiValueMap, 10, Integer.parseInt(baseDownTableSuffix) * closestRate, filterVarList);
        // System.out.println("大数据量当前使用了{}降采样", Integer.parseInt(baseDownTableSuffix) * closestRate);
     }
