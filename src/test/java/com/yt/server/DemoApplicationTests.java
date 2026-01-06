@@ -1442,16 +1442,17 @@ class DemoApplicationTests {
     void testBatchData() throws NoSuchFieldException, ExecutionException, InterruptedException, IllegalAccessException {
         List<Map<String, String>> mapList = new ArrayList<>();
         List<String> originalVarList=new ArrayList<>();
-        originalVarList.add("App_00.Pou_00.var_00");
-        originalVarList.add("App_00.Pou_00.var_01");
-        originalVarList.add("App_00.Pou_00.var_02");
-        originalVarList.add("App_00.Pou_00.var_03");
-        originalVarList.add("App_00.Pou_00.var_04");
-        originalVarList.add("App_00.Pou_00.var_05");
-        originalVarList.add("App_00.Pou_00.var_06");
-        originalVarList.add("App_00.Pou_00.var_07");
-        originalVarList.add("App_00.Pou_00.var_08");
-        originalVarList.add("App_00.Pou_00.var_09");
+        originalVarList.add("plc_prgb0");
+        originalVarList.add("plc_prgr0");
+        originalVarList.add("plc_prgr1");
+        originalVarList.add("plc_prgr2");
+//        originalVarList.add("App_00.Pou_00.var_03");
+//        originalVarList.add("App_00.Pou_00.var_04");
+//        originalVarList.add("App_00.Pou_00.var_05");
+//        originalVarList.add("App_00.Pou_00.var_06");
+//        originalVarList.add("App_00.Pou_00.var_07");
+//        originalVarList.add("App_00.Pou_00.var_08");
+//        originalVarList.add("App_00.Pou_00.var_09");
         List<String> filterVarList = new ArrayList<>();
         for (String varName : originalVarList) {
             String filterVarName = erasePoint(varName);
@@ -1464,8 +1465,8 @@ class DemoApplicationTests {
         final MultiValueMap allMultiValueMap = new MultiValueMap();
         int closestRate = 8;
         for (String varName : filterVarList) {
-            Object[] samplingParam = new Object[]{0, 85440000};
-            String samplingSql = " select timestamp, value from " + "trace302_downsampling".concat("_").concat(varName).concat("_").concat(baseDownTableSuffix) + "  where  timestamp between ? and ?  ";
+            Long[] samplingParam = new Long[]{0L, 3849582000L};
+            String samplingSql = " select timestamp, value from " + "trace62_downsampling".concat("_").concat(varName).concat("_").concat(baseDownTableSuffix) + "  where  timestamp between ? and ?  ";
             List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
             List<UniPoint> uniPointList = convertTraceDownsampling2UniPoint(traceDownsamplingList, varName);
             int gap = uniPointList.size() / 2000;
@@ -1480,6 +1481,7 @@ class DemoApplicationTests {
                 allMultiValueMap.putAll(multiValueMap);
             }
         }
+        System.out.println(allMultiValueMap);
       //  handleDownTailData(0L, 85440000L, "trace302", mapList, fieldName, allMultiValueMap, 10, Integer.parseInt(baseDownTableSuffix) * closestRate, filterVarList);
        // System.out.println("大数据量当前使用了{}降采样", Integer.parseInt(baseDownTableSuffix) * closestRate);
     }
