@@ -1012,7 +1012,7 @@ public class IoComposeServiceDatabase {
         reentrantLock.lock();
         try (Connection connection = dataSource.getConnection()) {
             //加锁防止降采样表不是从最开始的时间戳写入的
-            final long start = System.currentTimeMillis();
+            //final long start = System.currentTimeMillis();
             JSONObject jsonObject = vsCodeReqParam.gettData();
             Set<String> keySet = jsonObject.keySet();
             //待批量插入数据库的数据
@@ -1051,7 +1051,7 @@ public class IoComposeServiceDatabase {
                 fieldNameList.add(filterVarName);
             }
             fieldNameList.add(0, VarConst.ID);
-            final long middle = System.currentTimeMillis();
+            //final long middle = System.currentTimeMillis();
             //System.out.println("解析花费了: " + (middle - start));
             traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             if (!"traceStart".equalsIgnoreCase(traceTableRelatedInfo.getTraceStatus())) {
@@ -1121,7 +1121,7 @@ public class IoComposeServiceDatabase {
             }
             List<String> filterList = fieldNameList.stream().filter(item -> !VarConst.ID.equals(item)).toList();
             handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer());
-            final long end = System.currentTimeMillis();
+            //final long end = System.currentTimeMillis();
             //logger.info("总共花费了" + (end - start));
         } catch (Exception e) {
             logger.error(e.getMessage());
