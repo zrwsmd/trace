@@ -1,0 +1,8 @@
+### 开启日志
+POST http://localhost:17778/api/logging/toggle?enabled=true
+
+### 关闭日志
+POST http://localhost:17778/api/logging/toggle?enabled=false
+
+### 查询状态
+GET http://localhost:17778/api/logging/status
