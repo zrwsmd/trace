@@ -653,8 +653,13 @@ public class IoComposeServiceDatabase {
     }
 
     private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, String varName) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
-        //小于一个任务周期就没必要请求了
-        if (endTimestamp - startTimestamp < getConfigPer()) {
+        /**
+         * 小于一个任务周期就没必要请求了,但是注意
+         *  endLeftStartTimestamp前面会加1，所以不准确，不加1会丢失如下这个点423836000
+         *  e.g endLeftStartTimestamp=423835001,reqEndTimestamp=423836000,varName=TESTORIGINAL.a2,周期getConfigPer()是1000(1ms)
+         *  所以还得加回来那个1再次和一个周期对比
+         */
+        if (endTimestamp - startTimestamp + 1 < getConfigPer()) {
             return;
         }
         Set<String> queryTable = getQueryTable(startTimestamp, endTimestamp, currentTableName);
