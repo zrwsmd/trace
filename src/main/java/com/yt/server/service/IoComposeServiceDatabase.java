@@ -622,6 +622,8 @@ public class IoComposeServiceDatabase {
         Long endLeftStartTimestamp = null;
         final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
         for (Map.Entry<BigDecimal, BigDecimal> entry : entrySet) {
+            //循环每一个变量，因为每一个变量最后和最开始的值可能不一样
+            String varName = String.valueOf(entry.getKey());
             List valueList = (List) entry.getValue();
             BigDecimal[] startBd = (BigDecimal[]) valueList.get(0);
             /**
@@ -630,9 +632,9 @@ public class IoComposeServiceDatabase {
              * 不需要处理的情况:但是需要判断假如前面的处理第一条数据返回117850,起始点是117843，此时小于一个per，不需要处理了
              */
             long threadStartValue = startBd[0].longValue();
-            logger.info("whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}", whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per), threadStartValue, reqStartTimestamp, per);
+            logger.info("varName:{},whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}", varName, whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per), threadStartValue, reqStartTimestamp, per);
             if (threadStartValue > reqStartTimestamp && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
-                beginLeftStartTimestamp = threadStartValue - 1;
+                beginLeftStartTimestamp = threadStartValue;
             }
             BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 1);
             final long threadLastValue = endBd[0].longValue();
@@ -640,19 +642,20 @@ public class IoComposeServiceDatabase {
             if (threadLastValue != reqEndTimestamp) {
                 endLeftStartTimestamp = threadLastValue + 1;
             }
-            break;
+            if (beginLeftStartTimestamp != null) {
+                logger.info("reqStartTimestamp={}，beginLeftStartTimestamp={},varName={}", reqStartTimestamp, beginLeftStartTimestamp, varName);
+                handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, varName);
+            }
+            if (endLeftStartTimestamp != null) {
+                logger.info("endLeftStartTimestamp={},reqEndTimestamp={},varName={}", endLeftStartTimestamp, reqEndTimestamp, varName);
+                handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, varName);
+            }
+            // break;
         }
-        logger.info("beginLeftStartTimestamp={}", beginLeftStartTimestamp);
-        logger.info("endLeftStartTimestamp={}", endLeftStartTimestamp);
-        if (beginLeftStartTimestamp != null) {
-            handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
-        }
-        if (endLeftStartTimestamp != null) {
-            handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
-        }
+
     }
 
-    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, List<String> filterVarList) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
+    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, String varName) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
         //小于一个任务周期就没必要请求了
         if (endTimestamp - startTimestamp < getConfigPer()) {
             return;
@@ -669,24 +672,51 @@ public class IoComposeServiceDatabase {
         for (Future<List<UniPoint>> future : lagResultList) {
             lagUniPointList.addAll(future.get());
         }
-        uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
-//        for (String varName : filterVarList) {
-//            List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
-//            int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
-//            Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
-//            logger.info("singleVarDataList_more:{}", singleVarDataList);
-//            logger.info("closestRate_more:{}", closestRate);
+        //uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
+        // for (String varName : filterVarList) {
+        logger.info("lagUniPointList:{},varName={}", lagUniPointList.get(0).getVarName(), varName);
+        List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> erasePoint(varName).equals(item.getVarName())).toList();
+        int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
+        Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
+        logger.info("singleVarDataList_more:{}", singleVarDataList);
+        logger.info("closestRate_more:{}", closestRate);
+        /**
+         * 最少保证返回2个点，要不太少了 如下的Math.max(xx,2);
+         */
+        if (customDownsamplingRule == 1) {
+            //自定义规则
+            customDownsamplingRule = closestRate / 2;
+        }
+        if (bucketSize > 0) {
+            logger.info("singleVarDataList.size()【bucketSize>0】:{}", singleVarDataList.size());
+            if (singleVarDataList.size() < 50) {
+                //降一级采样,比如之前closestRate是32，那么使用customDownsamplingRule就是16
+                int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+            } else {
+                int targetCount = Math.max(singleVarDataList.size() / closestRate, 2);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+            }
+        } else {
+            logger.info("singleVarDataList.size()【bucketSize=0】:{}", singleVarDataList.size());
+            //singleVarDataList.size小于closestRate
+            int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
+            List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+            uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+        }
 //            if (bucketSize > 0) {//够一定数量进行降采样
-//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize);
+//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
 //                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
 //            } else if (bucketSize == 0 && customDownsamplingRule != 1 && customDownsamplingRule <= singleVarDataList.size() && singleVarDataList.size() > 2) { //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
-//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, singleVarDataList.size() / customDownsamplingRule);
+//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, singleVarDataList.size() / customDownsamplingRule, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
 //                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
 //            } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0) {//数量少的话直接返回全量表数据
-//                uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
-//                break;
+//                uniPoint2Map(singleVarDataList, allMultiValueMap, mapList);
+//               // break;
 //            }
-//        }
+        //}
     }
 
     private void handleFullTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName,
@@ -704,13 +734,13 @@ public class IoComposeServiceDatabase {
              */
             long threadStartValue = startBd[0].longValue();
             if (threadStartValue > reqStartTimestamp && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
-                beginLeftStartTimestamp = threadStartValue - 1;
+                beginLeftStartTimestamp = threadStartValue;
             }
             BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 1);
             final long threadLastValue = endBd[0].longValue();
             //最后那条数据如果等于结束值，就不用下面的查询剩余数据了
             if (threadLastValue != reqEndTimestamp) {
-                endLeftStartTimestamp = threadLastValue + 1;
+                endLeftStartTimestamp = threadLastValue;
             }
             break;
         }

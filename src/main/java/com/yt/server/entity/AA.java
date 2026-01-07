@@ -1,24 +1,18 @@
 package com.yt.server.entity;
 
-import com.yt.server.util.BaseUtils;
 import org.springframework.beans.factory.FactoryBean;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.sql.Timestamp;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 
 import static com.yt.server.service.IoComposeServiceDatabase.totalSize;
+import static com.yt.server.util.BaseUtils.customDownsamplingRule;
 
 /**
  * @description:
@@ -231,6 +225,8 @@ public class AA implements FactoryBean {
 //        final Integer nearestRegion33 = getNearestRegion33(10000330000L);
 //        System.out.println(nearestRegion);
 //        System.out.println(nearestRegion33);
+        final Integer i = customDownsamplingRule(4, 10);
+        System.out.println(i);
     }
 
 }

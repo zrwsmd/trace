@@ -37,7 +37,8 @@ public class MinMaxDownsampler {
             }
             extremes.add(data.get(0));
             if (globalMin != data.get(0) && globalMin != data.get(data.size() - 1)) extremes.add(globalMin);
-            if (globalMax != data.get(0) && globalMax != data.get(data.size() - 1) && globalMax != globalMin) extremes.add(globalMax);
+            if (globalMax != data.get(0) && globalMax != data.get(data.size() - 1) && globalMax != globalMin)
+                extremes.add(globalMax);
             extremes.add(data.get(data.size() - 1));
             extremes.sort((p1, p2) -> p1.getX().compareTo(p2.getX()));
             return extremes;
@@ -51,6 +52,12 @@ public class MinMaxDownsampler {
 
         // 1. Always add the first point
         sampledPoints.add(firstPoint);
+
+        if (threshold == 2) {
+            //targetCount只要求返回2个点，那么就只返回首尾2个点
+            sampledPoints.add(lastPoint);
+            return sampledPoints;
+        }
 
         // 2. Downsample the middle part of the data
         List<UniPoint> middleData = data.subList(1, data.size() - 1);
