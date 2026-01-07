@@ -518,7 +518,6 @@ public class IoComposeServiceDatabase {
                     handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), Integer.parseInt(downTableSuffix), filterVarList);
                     //writeTimestampToD3("gap="+gap+",downTableSuffix="+downTableSuffix+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
                     //writeTimestampToD3("大数据量当前使用了" + downTableSuffix + "降采样", reqStartTimestamp, reqEndTimestamp);
-                    //logger.info("大数据量当前使用了{}降采样", downTableSuffix);
                     return allMultiValueMap;
                 }
                 //writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
@@ -557,7 +556,6 @@ public class IoComposeServiceDatabase {
 //                    if ((reqEndTimestamp - threadLastValue) / perMap.get("per") <= lagNum) {
 //                        handleFromFull(threadLastValue, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
 //                    }
-                //logger.info("小数据量使用了{}倍降采样，数据返回成功", closestRate);
                 //writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")), reqStartTimestamp, reqEndTimestamp);
                 return allMultiValueMap;
 
@@ -612,7 +610,6 @@ public class IoComposeServiceDatabase {
         if (reqEndTimestamp % getConfigPer() != 0) {
             handleFullTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer());
         }
-        //logger.info("查询全量表数据成功!");
         return allMultiValueMap;
     }
 
@@ -632,7 +629,7 @@ public class IoComposeServiceDatabase {
              * 不需要处理的情况:但是需要判断假如前面的处理第一条数据返回117850,起始点是117843，此时小于一个per，不需要处理了
              */
             long threadStartValue = startBd[0].longValue();
-            logger.info("varName:{},whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}", varName, whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per), threadStartValue, reqStartTimestamp, per);
+            //logger.info("varName:{},whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}", varName, whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per), threadStartValue, reqStartTimestamp, per);
             if (threadStartValue > reqStartTimestamp && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
                 beginLeftStartTimestamp = threadStartValue;
             }
@@ -674,12 +671,12 @@ public class IoComposeServiceDatabase {
         }
         //uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
         // for (String varName : filterVarList) {
-        logger.info("lagUniPointList:{},varName={}", lagUniPointList.get(0).getVarName(), varName);
+        //logger.info("lagUniPointList:{},varName={}", lagUniPointList.get(0).getVarName(), varName);
         List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> erasePoint(varName).equals(item.getVarName())).toList();
         int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
         Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
-        logger.info("singleVarDataList_more:{}", singleVarDataList);
-        logger.info("closestRate_more:{}", closestRate);
+        //logger.info("singleVarDataList_more:{}", singleVarDataList);
+        logger.info("closestRate_lag:{}", closestRate);
         /**
          * 最少保证返回2个点，要不太少了 如下的Math.max(xx,2);
          */
