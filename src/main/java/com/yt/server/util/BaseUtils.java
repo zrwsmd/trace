@@ -9,7 +9,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.lang.reflect.*;
+
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Connection;
@@ -17,6 +18,7 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+
 import static com.yt.server.service.IoComposeServiceDatabase.totalSize;
 
 /**
@@ -448,7 +450,6 @@ public class BaseUtils {
     }
 
 
-
     public static String erasePoint(String varName) {
         if (StringUtils.isNotEmpty(varName)) {
             varName = varName.replace(".", "");
@@ -523,7 +524,7 @@ public class BaseUtils {
     }
 
     public static Integer customDownsamplingRule(int closestRate, int size) {
-        Integer[] data = new Integer[]{8, 16, 32, 64, 128, 256, 512, 1024};
+        Integer[] data = new Integer[]{4, 8, 16, 32, 64, 128, 256, 512};
         int currentMinDownRate = 1;
         for (Integer datum : data) {
             if (datum < closestRate) {
@@ -639,13 +640,14 @@ public class BaseUtils {
             for (int i = 0; i < bcdString.length(); i += 2) {
                 bcd[i / 2] = (byte) ((Character.digit(bcdString.charAt(i), 10) << 4) + Character.digit(bcdString.charAt(i + 1), 10));
             }
-           reverseByteArray(bcd);
+            reverseByteArray(bcd);
             return bcd;
         } catch (Exception e) {
             e.printStackTrace();
             return new byte[7];
         }
     }
+
     public static void reverseByteArray(byte[] array) {
         int left = 0; // 开始指针
         int right = array.length - 1; // 结束指针
