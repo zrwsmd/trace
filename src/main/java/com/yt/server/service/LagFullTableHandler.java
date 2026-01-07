@@ -1,7 +1,6 @@
 package com.yt.server.service;
 
 import com.yt.server.entity.UniPoint;
-import org.apache.commons.collections.map.MultiValueMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -33,9 +32,12 @@ public class LagFullTableHandler implements Callable<List<UniPoint>> {
     private final List<Map<String, String>> mapList;
 
     private static final Integer CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
-    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
+    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
 
-    public LagFullTableHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName, List<Map<String, String>> mapList) {
+    public LagFullTableHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp,
+                               JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName,
+                               List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.reqStartTimestamp = reqStartTimestamp;
         this.reqEndTimestamp = reqEndTimestamp;
@@ -45,10 +47,9 @@ public class LagFullTableHandler implements Callable<List<UniPoint>> {
         this.mapList = mapList;
     }
 
-
     @Override
     public List<UniPoint> call() throws Exception {
-        List<UniPoint> uniPointList  = null;
+        List<UniPoint> uniPointList = null;
         try {
             uniPointList = new ArrayList<>();
             int size = 0;
@@ -60,28 +61,34 @@ public class LagFullTableHandler implements Callable<List<UniPoint>> {
             CountDownLatch innerCountDownLatch = new CountDownLatch(size);
             final long shard = (reqEndTimestamp - reqStartTimestamp) / 500;
             List<Future<List<UniPoint>>> resultList = new ArrayList<>();
-            //60000 1000000           60000 154000 154001 248000
+            // 60000 1000000 60000 154000 154001 248000
             for (int i = 0; i < 500; i++) {
                 if (i == 0) {
-                    Future<List<UniPoint>> future = pool.submit(new LagFullRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                    Future<List<UniPoint>> future = pool.submit(
+                            new LagFullRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1),
+                                    jdbcTemplate, innerCountDownLatch, fieldName, mapList));
                     resultList.add(future);
                 } else {
-                    Future<List<UniPoint>> future = pool.submit(new LagFullRowHandler(queryTable, reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                    Future<List<UniPoint>> future = pool.submit(new LagFullRowHandler(queryTable,
+                            reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate,
+                            innerCountDownLatch, fieldName, mapList));
                     resultList.add(future);
                 }
             }
             if ((reqEndTimestamp - reqStartTimestamp) % 500 != 0) {
-                Future<List<UniPoint>> leftFuture = pool.submit(new LagFullRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1, reqEndTimestamp, jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                Future<List<UniPoint>> leftFuture = pool
+                        .submit(new LagFullRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1, reqEndTimestamp,
+                                jdbcTemplate, innerCountDownLatch, fieldName, mapList));
                 resultList.add(leftFuture);
             }
             innerCountDownLatch.await();
             for (Future<List<UniPoint>> future : resultList) {
                 uniPointList.addAll(future.get());
             }
-            countDownLatch.countDown();
         } catch (Exception e) {
             logger.error(LagFullTableHandler.class.getName(), e);
         } finally {
+            countDownLatch.countDown();
             pool.shutdown();
         }
         return uniPointList;

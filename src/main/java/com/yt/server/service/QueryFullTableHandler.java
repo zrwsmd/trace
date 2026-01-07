@@ -32,9 +32,12 @@ public class QueryFullTableHandler implements Callable<MultiValueMap> {
     private final List<Map<String, String>> mapList;
 
     private static final Integer CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
-    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
+    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60,
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
 
-    public QueryFullTableHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName, List<Map<String, String>> mapList) {
+    public QueryFullTableHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp,
+                                 JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName,
+                                 List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.reqStartTimestamp = reqStartTimestamp;
         this.reqEndTimestamp = reqEndTimestamp;
@@ -43,7 +46,6 @@ public class QueryFullTableHandler implements Callable<MultiValueMap> {
         this.fieldName = fieldName;
         this.mapList = mapList;
     }
-
 
     @Override
     public MultiValueMap call() throws Exception {
@@ -59,28 +61,34 @@ public class QueryFullTableHandler implements Callable<MultiValueMap> {
             CountDownLatch innerCountDownLatch = new CountDownLatch(size);
             final long shard = (reqEndTimestamp - reqStartTimestamp) / 500;
             List<Future<MultiValueMap>> resultList = new ArrayList<>();
-            //60000 1000000           60000 154000 154001 248000
+            // 60000 1000000 60000 154000 154001 248000
             for (int i = 0; i < 500; i++) {
                 if (i == 0) {
-                    Future<MultiValueMap> future = pool.submit(new QueryFullRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                    Future<MultiValueMap> future = pool.submit(
+                            new QueryFullRowHandler(queryTable, reqStartTimestamp, reqStartTimestamp + shard * (i + 1),
+                                    jdbcTemplate, innerCountDownLatch, fieldName, mapList));
                     resultList.add(future);
                 } else {
-                    Future<MultiValueMap> future = pool.submit(new QueryFullRowHandler(queryTable, reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                    Future<MultiValueMap> future = pool.submit(new QueryFullRowHandler(queryTable,
+                            reqStartTimestamp + shard * (i) + 1, reqStartTimestamp + shard * (i + 1), jdbcTemplate,
+                            innerCountDownLatch, fieldName, mapList));
                     resultList.add(future);
                 }
             }
             if ((reqEndTimestamp - reqStartTimestamp) % 500 != 0) {
-                Future<MultiValueMap> leftFuture = pool.submit(new QueryFullRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1, reqEndTimestamp, jdbcTemplate, innerCountDownLatch, fieldName, mapList));
+                Future<MultiValueMap> leftFuture = pool
+                        .submit(new QueryFullRowHandler(queryTable, reqStartTimestamp + shard * 500 + 1,
+                                reqEndTimestamp, jdbcTemplate, innerCountDownLatch, fieldName, mapList));
                 resultList.add(leftFuture);
             }
             innerCountDownLatch.await();
             for (Future<MultiValueMap> future : resultList) {
                 allMultiValueMap.putAll(future.get());
             }
-            countDownLatch.countDown();
         } catch (Exception e) {
             logger.error(QueryFullTableHandler.class.getName(), e);
         } finally {
+            countDownLatch.countDown();
             pool.shutdown();
         }
         return allMultiValueMap;
