@@ -76,7 +76,7 @@ public class AdaptiveDownsamplingSelector {
         if (dataPoints.size() <= targetCount + 2) {
             rawResult = new ArrayList<>(dataPoints);
         } else if (dataPoints.size() < MIN_POINTS_FOR_ANALYSIS) {
-            rawResult = MinMaxDownsampler.downsample(dataPoints, targetCount);
+            rawResult = selectAndApplyAlgorithm(dataPoints, targetCount);
         } else if (dataPoints.size() > BASE_WINDOW_SIZE * 2 && targetCount >= BASE_WINDOW_SIZE / 2) {
             rawResult = windowBasedDownsamplingV4(dataPoints, targetCount);
         } else {
