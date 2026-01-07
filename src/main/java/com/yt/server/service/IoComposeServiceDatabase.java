@@ -685,7 +685,7 @@ public class IoComposeServiceDatabase {
             customDownsamplingRule = closestRate / 2;
         }
         if (bucketSize > 0) {
-            logger.info("singleVarDataList.size()【bucketSize>0】:{}", singleVarDataList.size());
+            logger.info("singleVarDataList.size(){bucketSize>0}:{}", singleVarDataList.size());
             if (singleVarDataList.size() < 50) {
                 //降一级采样,比如之前closestRate是32，那么使用customDownsamplingRule就是16
                 int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
@@ -697,7 +697,7 @@ public class IoComposeServiceDatabase {
                 uniPoint2Map(uniPoints, allMultiValueMap, mapList);
             }
         } else {
-            logger.info("singleVarDataList.size()【bucketSize=0】:{}", singleVarDataList.size());
+            logger.info("singleVarDataList.size(){bucketSize=0}:{}", singleVarDataList.size());
             //singleVarDataList.size小于closestRate
             int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
             List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
