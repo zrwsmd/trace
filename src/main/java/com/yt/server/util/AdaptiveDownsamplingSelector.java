@@ -70,7 +70,10 @@ public class AdaptiveDownsamplingSelector {
         if (targetCount <= 0) {
             return Collections.emptyList();
         }
-
+        //只有一条数据直接返回就行，不用走下面的逻辑
+        if (dataPoints.size() == 1 || targetCount == 1) {
+            return dataPoints;
+        }
         List<UniPoint> rawResult;
 
         if (dataPoints.size() <= targetCount + 2) {
