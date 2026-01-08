@@ -33,11 +33,15 @@ public class AdaptiveDownsamplingSelector {
             this.code = code;
         }
 
+        /**
+         * 获取执行类型编码
+         *
+         * @return 编码字符串
+         */
         public String getCode() {
             return code;
         }
     }
-
 
     private static final Logger logger = LoggerFactory.getLogger(AdaptiveDownsamplingSelector.class);
 
@@ -57,7 +61,18 @@ public class AdaptiveDownsamplingSelector {
     private static final double MAX_WINDOW_SPARSITY = 0.5; // 窗口最大稀疏度50%
 
     /**
-     * 主入口：自适应降采样
+     * 主入口：自适应降采样核心逻辑
+     * <p>
+     * 根据数据规模和预期点数，自动选择最优处理路径：
+     * 1. 规模极小：直通返回
+     * 2. 规模较小（不足分析阈值）：全局算法选择
+     * 3. 规模较大且压缩比适中：基于窗口的精细化降采样（V4版本）
+     * 4. 其他：全局特征识别后应用最匹配算法
+     *
+     * @param dataPoints  原始数据点列表
+     * @param targetCount 目标点数
+     * @param type        执行类型（同步/异步）
+     * @return 降采样后的点列表
      */
     public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount, ExecType type) {
         if (type == AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE) {
@@ -70,7 +85,7 @@ public class AdaptiveDownsamplingSelector {
         if (targetCount <= 0) {
             return Collections.emptyList();
         }
-        //只有一条数据直接返回就行，不用走下面的逻辑
+        // 只有一条数据直接返回就行，不用走下面的逻辑
         if (dataPoints.size() == 1 || targetCount == 1) {
             return dataPoints;
         }
@@ -90,11 +105,18 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 优化的窗口降采样
-     * 核心改进：
-     * 1. 自适应窗口大小
-     * 2. 改进的权重计算（避免过度稀疏）
-     * 3. 强制最小点数保护
+     * 基于窗口的自适应降采样（V4版本）
+     * <p>
+     * 核心流程：
+     * 1. 计算自适应窗口大小
+     * 2. 对每个窗口进行局部特征提取与信号分类
+     * 3. 根据窗口复杂度（权重）动态分配采样配额
+     * 4. 对每个窗口应用最匹配的局部降采样算法
+     * 5. 聚合结果并确保最终点数达标
+     *
+     * @param dataPoints  原始数据点列表
+     * @param targetCount 约束后的目标总点数
+     * @return 精确符合目标点数的降采样结果
      */
     private static List<UniPoint> windowBasedDownsamplingV4(List<UniPoint> dataPoints, int targetCount) {
         int totalPoints = dataPoints.size();
@@ -171,7 +193,13 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 新增：计算自适应窗口大小
+     * 计算自适应窗口大小
+     * <p>
+     * 根据整体压缩比动态决定处理窗口的粒度。压缩倍率越高，建议窗口越大以平衡性能与效果。
+     *
+     * @param totalPoints 数据点总数
+     * @param targetCount 目标压缩点数
+     * @return 建议的窗口步长（点数）
      */
     private static int calculateAdaptiveWindowSize(int totalPoints, int targetCount) {
         // 基于压缩比动态调整窗口大小
@@ -192,7 +220,17 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 改进的权重计算（避免过度稀疏）
+     * 计算窗口重要性权重
+     * <p>
+     * 权重计算综合考虑以下指标：
+     * 1. 波动性权重（基准权重）
+     * 2. 复杂度补偿（非线性和非平坦度）
+     * 3. 信号类型加成（阶跃、脉冲等特殊信号大幅加码）
+     * 4. 周期性奖励（保留循环特征）
+     *
+     * @param type     窗口数据分类
+     * @param features 窗口提取的统计特征
+     * @return 该窗口的相对重要性权重 (0.3 ~ 3.0+)
      */
     private static double calculateBalancedWeight(SignalType type, SignalFeatures features) {
         // 基础权重：从归一化波动率开始
@@ -218,11 +256,20 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 新增：改进的点数分配算法
-     * 核心改进：
-     * 1. 设置每个窗口的最小点数（基于全局密度）
-     * 2. 防止过度稀疏的窗口
-     * 3. 多轮分配，确保公平性
+     * 点数资源配额分配（V4版本）
+     * <p>
+     * 核心逻辑：
+     * 1. 首轮：基于窗口加权尺寸比例进行基础分配
+     * 2. 二轮：执行最小密度保护（MIN_DENSITY_RATIO = 2%），防止任何区域被掏空
+     * 3. 三轮：溢出处理，如果分配总数超出限制，在保证最小值基础上按规模裁剪
+     * 4. 四轮：赤字处理，如果点数不足，将剩余名额补充给高权重的关键区域
+     *
+     * @param weights           权重数组
+     * @param windowSizes       窗口实际点数数组
+     * @param numWindows        窗口总数
+     * @param targetCount       期望总点数
+     * @param totalWeightedSize 所有窗口加权总尺寸
+     * @return 计算后的每个窗口的目标采样配额
      */
     private static int[] allocatePointsV4(
             double[] weights, int[] windowSizes, int numWindows,
@@ -300,7 +347,17 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v4.0 改进的结果归一化（确保目标点数）
+     * 结果点数归一化（精确对齐目标）
+     * <p>
+     * 无论中间算法产生多少点，最终通过此方法确保输出规模绝对等于 targetCount：
+     * 1. candidate.size == targetCount: 无需处理
+     * 2. candidate.size > targetCount: 执行二次均匀裁剪
+     * 3. candidate.size < targetCount: 调用智能填充策略补足缺口
+     *
+     * @param candidate   降采样算法生成的候选点集
+     * @param original    完整的原始点集（用于补点参考）
+     * @param targetCount 最终期望输出的点数规模
+     * @return 长度完全符合预期的降采样结果集
      */
     private static List<UniPoint> normalizeToTargetV4(
             List<UniPoint> candidate, List<UniPoint> original, int targetCount) {
@@ -359,9 +416,17 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v5.0 改进：填充空白区域
-     * 核心改进：在 gap 中选择中点位置的点，而不是第一个遇到的点
-     * 这样补点后分布更均匀，避免在 gap 起始处聚集
+     * 智能数据空隙填充逻辑（V5版本）
+     * <p>
+     * 核心改进点（V5）：
+     * 1. 空间优先：识别 X 轴上最大的时间差（Gap）
+     * 2. 分布优先：在 Gap 中优先由于偏爱首尾而引入数据，改为优先采用【中点】附近的原始数据
+     * 3. 均匀扩展：对于特大 Gap，支持 1/4 和 3/4 分位点的二次采样，提升视觉饱满度
+     *
+     * @param candidate 现有已选中的点集
+     * @param original  全量备选点集
+     * @param count     还需要追加补充的点数名额
+     * @return 选中的填充点列表
      */
     private static List<UniPoint> fillGaps(
             List<UniPoint> candidate, List<UniPoint> original, int count) {
@@ -489,7 +554,10 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 选择并应用算法
+     * 全局决策引擎：选择最匹配算法并应用
+     * <p>
+     * 处理中等规模数据或分窗处理的首选方案。
+     * 读取信号类型（SignalType），并映射到预定义的专业降采样算法。
      */
     private static List<UniPoint> selectAndApplyAlgorithm(
             List<UniPoint> dataPoints, int targetCount) {
@@ -547,6 +615,19 @@ public class AdaptiveDownsamplingSelector {
         double residualStdDev;
     }
 
+    /**
+     * 核心特征提取引擎
+     * <p>
+     * 对输入段落进行全方位的数学特征画像，包括：
+     * - 基础统计量：均值、标准差、极值范围
+     * - 波动宏观特征：绝对波动率、归一化波动率（核心指纹）
+     * - 几何形状特征：线性度（R²拟合）、趋势斜率、平坦度
+     * - 信号规律识别：周期性强度、预估周期（自相关分析）
+     * - 噪声/平滑分析：噪声占比（二阶导数分析）
+     *
+     * @param data 待分析的数据段
+     * @return 封装好的 SignalFeatures 对象
+     */
     private static SignalFeatures extractFeatures(List<UniPoint> data) {
         SignalFeatures features = new SignalFeatures();
         int n = data.size();
@@ -593,6 +674,15 @@ public class AdaptiveDownsamplingSelector {
         return features;
     }
 
+    /**
+     * 计算归一化波动率（残差抖动）
+     * <p>
+     * 排除宏观趋势后，计算相邻点变化的平均相对振幅。
+     * 该指标能有效识别"高频噪声"与"低频信号"。
+     *
+     * @param values 残差序列（去趋势后的序列）
+     * @return 归一化波动系数
+     */
     private static double calculateNormalizedVolatility(List<Double> values) {
         if (values == null || values.size() < 2)
             return 0.0;
@@ -610,6 +700,16 @@ public class AdaptiveDownsamplingSelector {
         return normalizedDiffs.stream().mapToDouble(d -> d).average().orElse(0.0);
     }
 
+    /**
+     * 计算绝对路径波动率
+     * <p>
+     * 定义：Σ|y_i - y_{i-1}| / range
+     * 反应了信号在给定时空内的"总位移"与"有效跨度"的比值。
+     *
+     * @param data  局部数据
+     * @param range 垂直方向总跨度
+     * @return 绝对波动率系数
+     */
     private static double calculateVolatility(List<UniPoint> data, double range) {
         if (range < 1e-6)
             return 0.0;
@@ -621,6 +721,15 @@ public class AdaptiveDownsamplingSelector {
         return totalDistance / range;
     }
 
+    /**
+     * 计算线性趋势信息
+     * <p>
+     * 使用最小二乘法拟合 y = ax + b。
+     * 提取出的趋势斜率（slope）用于判定信号漂移，残差（residuals）用于后续的微观特征分析。
+     *
+     * @param data 原始数据段
+     * @return 包含斜率、截距及残差统计的 TrendInfo 对象
+     */
     private static TrendInfo calculateTrendInfo(List<UniPoint> data) {
         TrendInfo info = new TrendInfo();
         int n = data.size();
@@ -680,6 +789,15 @@ public class AdaptiveDownsamplingSelector {
         double period;
     }
 
+    /**
+     * 信号周期性捕捉引擎
+     * <p>
+     * 通过扫描不同时长（Lag）下的自相关系数来推断信号是否有重复模式。
+     * 广泛应用于识别正弦波、方波等周期性物理量。
+     *
+     * @param values 分析序列
+     * @return 包含周期强度和最短周期的 PeriodInfo
+     */
     private static PeriodInfo detectPeriodicity(List<Double> values) {
         PeriodInfo info = new PeriodInfo();
         if (values.size() < 10) {
@@ -715,6 +833,12 @@ public class AdaptiveDownsamplingSelector {
         return info;
     }
 
+    /**
+     * 信号标准化预处理
+     * <p>
+     * 将数据转换为零均值（Zero-mean）和单位方差。
+     * 这是执行高精度统计关联分析（如周期性检测）的必要前置步骤。
+     */
     private static List<Double> normalizeSignal(List<Double> values) {
         double mean = values.stream().mapToDouble(Double::doubleValue).average().orElse(0);
         double variance = values.stream().mapToDouble(v -> Math.pow(v - mean, 2)).average().orElse(0);
@@ -735,6 +859,9 @@ public class AdaptiveDownsamplingSelector {
         return normalized;
     }
 
+    /**
+     * 计算基于标准化的自相关系数（Lag correlation）
+     */
     private static double calculateAutocorrelationNormalized(List<Double> normalized, int lag) {
         int n = normalized.size();
         if (lag >= n || lag <= 0)
@@ -746,6 +873,13 @@ public class AdaptiveDownsamplingSelector {
         return sum / (n - lag);
     }
 
+    /**
+     * 计算信号线性度（R²）
+     * <p>
+     * 判定该段数据是否更符合一条笔直的斜线。
+     *
+     * @return 决定系数 R² (0~1)
+     */
     private static double calculateLinearity(List<UniPoint> data) {
         int n = data.size();
         if (n < 3)
@@ -779,6 +913,9 @@ public class AdaptiveDownsamplingSelector {
         return ssTot < 1e-6 ? 1.0 : Math.max(0, 1 - (ssRes / ssTot));
     }
 
+    /**
+     * 全局自相关分析
+     */
     private static double calculateAutocorrelation(List<UniPoint> data, int lag) {
         int n = data.size();
         if (lag >= n || lag <= 0)
@@ -801,6 +938,12 @@ public class AdaptiveDownsamplingSelector {
         return denominator < 1e-6 ? 0.0 : numerator / denominator;
     }
 
+    /**
+     * 阶跃检测
+     * <p>
+     * 通过寻找超出统计阈值的局部一阶导数（变化量），识别信号中的突变点。
+     * 常用于捕捉开关量变化或传感器故障。
+     */
     private static int detectSteps(List<UniPoint> data) {
         if (data.size() < 3)
             return 0;
@@ -824,6 +967,12 @@ public class AdaptiveDownsamplingSelector {
         return count;
     }
 
+    /**
+     * 计算噪声占比分析
+     * <p>
+     * 基于二阶导数（曲率）与总变化的比例。
+     * 比例越高，说明信号的随机抖动成分越重，物理规律越不明显。
+     */
     private static double calculateNoiseRatio(List<UniPoint> data) {
         if (data.size() < 3)
             return 0.0;
@@ -840,6 +989,11 @@ public class AdaptiveDownsamplingSelector {
         return totalChange < 1e-6 ? 0.0 : smoothChange / totalChange;
     }
 
+    /**
+     * 计算过零率（围绕均值的交越频率）
+     * <p>
+     * 反应信号的中心频率特性。如果是振荡信号，过零率会显著高于漂移信号。
+     */
     private static int countZeroCrossings(List<UniPoint> data, double baseline) {
         if (data.size() < 2)
             return 0;
@@ -856,6 +1010,9 @@ public class AdaptiveDownsamplingSelector {
         return count;
     }
 
+    /**
+     * 计算最大瞬时变化率
+     */
     private static double calculateMaxAbsDerivative(List<UniPoint> data) {
         double max = 0;
         for (int i = 1; i < data.size(); i++) {
@@ -872,6 +1029,17 @@ public class AdaptiveDownsamplingSelector {
         FLAT, LINEAR, PERIODIC, AMPLITUDE_MODULATED, STEP, NOISE, PULSE, TREND_NOISE, COMPLEX
     }
 
+    /**
+     * 信号语义分类逻辑
+     * <p>
+     * 基于提取的多维特征，将信号映射到具体的物理/逻辑类别：
+     * - FLAT: 平坦信号（逻辑值或死区数据）
+     * - LINEAR: 线性变换（恒定斜率）
+     * - PERIODIC: 周期振荡（正弦、方波等）
+     * - STEP/PULSE: 规则突变
+     * - NOISE: 纯随机抖动
+     * - COMPLEX/TREND_NOISE: 复杂复合信号
+     */
     private static SignalType classifySignal(SignalFeatures features) {
         if (features.flatness < FLATNESS_THRESHOLD)
             return SignalType.FLAT;
@@ -904,6 +1072,20 @@ public class AdaptiveDownsamplingSelector {
         KEEP_FIRST_LAST, LTTB, MIN_MAX, UNIFORM, PEAK_DETECTION, ADAPTIVE_LTTB, HYBRID_ENVELOPE, UNIFORM_WITH_EXTREMES
     }
 
+    /**
+     * 算法选择路由矩阵
+     * <p>
+     * 逻辑分层：
+     * 1. 极致压缩保护（FLAT）：首尾保留
+     * 2. 高压缩比场景（Compression > 10）：优先包络保护算法
+     * 3. 低压缩比场景：优先视觉几何保真算法
+     *
+     * @param signalType 识别出的信号分类
+     * @param features   详细统计特征
+     * @param inputSize  输入规模
+     * @param targetSize 目标规模
+     * @return 最优降采样算法类型
+     */
     private static DownsamplingAlgorithm selectAlgorithm(
             SignalType signalType, SignalFeatures features, int inputSize, int targetSize) {
         double compression = (double) inputSize / targetSize;
@@ -944,6 +1126,17 @@ public class AdaptiveDownsamplingSelector {
         }
     }
 
+    /**
+     * 算法执行调度器
+     * <p>
+     * 根据选择的算法类型，分发执行相应的具体实现函数。
+     *
+     * @param algorithm   目标算法
+     * @param data        原始数据
+     * @param targetCount 采样配额
+     * @param features    预先提取的特征（供混合算法参考）
+     * @return 局部降采样结果
+     */
     private static List<UniPoint> applyAlgorithm(
             DownsamplingAlgorithm algorithm, List<UniPoint> data,
             int targetCount, SignalFeatures features) {
@@ -977,6 +1170,15 @@ public class AdaptiveDownsamplingSelector {
         }
     }
 
+    /**
+     * 混合包络降采样算法
+     * <p>
+     * 专门针对【高压缩比】下的【周期性/振荡】信号设计。
+     * 策略：
+     * 1. 分配 40% 配额给 MinMax 包络（保留显示屏上的上下波动面）。
+     * 2. 分配 30% 配额给中心带采样（保留信号的平均平衡态）。
+     * 3. 剩余 30% 配额用于填充（LTTB 或均匀采样）。
+     */
     private static List<UniPoint> hybridEnvelopeDownsampling(
             List<UniPoint> data, int targetCount, SignalFeatures features) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0)
@@ -1027,6 +1229,11 @@ public class AdaptiveDownsamplingSelector {
         return mergedList.size() > safeTarget ? balancedUniformTrim(mergedList, safeTarget) : mergedList;
     }
 
+    /**
+     * 中心带采样
+     * <p>
+     * 在 bucket 内寻找最接近均值的点，用于刻画信号的"骨干"部分。
+     */
     private static List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) {
         if (quota <= 0 || CollectionUtils.isEmpty(data))
             return Collections.emptyList();
@@ -1066,6 +1273,11 @@ public class AdaptiveDownsamplingSelector {
         return selected.size() > quota ? balancedUniformTrim(selected, quota) : selected;
     }
 
+    /**
+     * 均衡均匀裁剪
+     * <p>
+     * 当已有候选集点数超出预期时，通过采样方式均匀删减。
+     */
     private static List<UniPoint> balancedUniformTrim(List<UniPoint> data, int targetCount) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0 || data.size() <= targetCount) {
             return data;
@@ -1090,16 +1302,17 @@ public class AdaptiveDownsamplingSelector {
     }
 
     /**
-     * 🔥 v5.0 新增：极值点保护 + 均匀分布算法
-     * 核心思路：
-     * 1. 首先识别并保护全局极值点（全局最大值、全局最小值）
-     * 2. 识别局部极值点（局部峰值和谷值）
-     * 3. 剩余配额均匀分布采样
-     * 4. 合并去重并按时间排序
-     * <p>
-     * 这确保了：
-     * - 极值点（特征明显的点）永远不会丢失
-     * - 采样点在时间轴上分布均匀
+     * * 🔥 v5.0 新增：极值点保护 + 均匀分布算法
+     * 解决 NOISE/TREND_NOISE 场景下 LTTB 容易产生点聚合的问题。
+     *      * 核心思路：
+     *      * 1. 首先识别并保护全局极值点（全局最大值、全局最小值）
+     *      * 2. 识别局部极值点（局部峰值和谷值）
+     *      * 3. 剩余配额均匀分布采样
+     *      * 4. 合并去重并按时间排序
+     *      * <p>
+     *      * 这确保了：
+     *      * - 极值点（特征明显的点）永远不会丢失
+     *      * - 采样点在时间轴上分布均匀
      */
     private static List<UniPoint> uniformWithExtremesDownsampling(List<UniPoint> data, int targetCount) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0) {
@@ -1235,6 +1448,9 @@ public class AdaptiveDownsamplingSelector {
         return result;
     }
 
+    /**
+     * 极致压缩：仅保留首尾
+     */
     private static List<UniPoint> keepFirstLast(List<UniPoint> data) {
         if (data.size() <= 2)
             return data;
@@ -1244,6 +1460,9 @@ public class AdaptiveDownsamplingSelector {
         return result;
     }
 
+    /**
+     * 标准均匀降采样
+     */
     private static List<UniPoint> uniformDownsampling(List<UniPoint> data, int targetCount) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0)
             return Collections.emptyList();
@@ -1264,6 +1483,11 @@ public class AdaptiveDownsamplingSelector {
         return result;
     }
 
+    /**
+     * 基于重要性排序的峰值检测降采样
+     * <p>
+     * 计算点的曲率（二阶导数）作为重要性权重，优先保留波动剧烈的点。
+     */
     private static List<UniPoint> peakDetectionDownsampling(List<UniPoint> data, int targetCount) {
         if (data.size() <= targetCount)
             return data;
@@ -1295,6 +1519,11 @@ public class AdaptiveDownsamplingSelector {
         return result;
     }
 
+    /**
+     * 自适应 LTTB 算法
+     * <p>
+     * 先分段计算复杂度，复杂度高的段落分配更多的 LTTB 桶（Buckets）。
+     */
     private static List<UniPoint> adaptiveLTTB(List<UniPoint> data, int targetCount) {
         int n = data.size();
         int numSegments = Math.min(10, n / 10);
@@ -1338,6 +1567,9 @@ public class AdaptiveDownsamplingSelector {
         return result;
     }
 
+    /**
+     * 计算数据段复杂度
+     */
     private static double calculateSegmentComplexity(List<UniPoint> segment) {
         if (segment.size() < 2)
             return 1.0;
@@ -1359,6 +1591,9 @@ public class AdaptiveDownsamplingSelector {
         }
     }
 
+    /**
+     * 点相等性判断（坐标值完全一致）
+     */
     private static boolean pointsEqual(UniPoint p1, UniPoint p2) {
         return p1.getX().compareTo(p2.getX()) == 0 && p1.getY().compareTo(p2.getY()) == 0;
     }
