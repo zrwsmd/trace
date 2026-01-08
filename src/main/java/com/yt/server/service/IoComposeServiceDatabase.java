@@ -467,7 +467,7 @@ public class IoComposeServiceDatabase {
             reqStartTimestamp = getMinValue(reqStartTimestamp, getConfigPer());
             final Set<String> queryTableList = getQueryTable(reqStartTimestamp, reqEndTimestamp, currentTableName);
             if (reqEndTimestamp >= (long) totalSize * getConfigPer()) {
-                reqEndTimestamp = (long) totalSize * getConfigPer() - 1;
+                reqEndTimestamp = (long) totalSize * getConfigPer();
             }
             int originalNum = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer());
             if (originalNum != 0) {
