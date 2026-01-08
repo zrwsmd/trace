@@ -185,7 +185,10 @@ public class HandleWasteTimeService {
 
                         }
                     }
-                    if ((currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
+                    if (currentMaxTimestamp == null || lastMaxTimestamp == null) {
+                        logger.info("originalRegionCountSql:{}", originalRegionCountSql);
+                    }
+                    if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
                         //writeTimestampToD4("ok",lastMaxTimestamp, currentMaxTimestamp);
                         handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
                     }
