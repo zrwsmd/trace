@@ -31,7 +31,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.yt.server.entity.AA.writeTimestampToD4;
 import static com.yt.server.util.BaseUtils.*;
 
 
@@ -463,7 +462,7 @@ public class IoComposeServiceDatabase {
         final MultiValueMap allMultiValueMap = new MultiValueMap();
         try {
             String fieldName = StringUtils.join(filterVarList, ",");
-            writeTimestampToD4(String.valueOf(getConfigPer()), reqStartTimestamp, reqEndTimestamp);
+            //writeTimestampToD4(String.valueOf(getConfigPer()), reqStartTimestamp, reqEndTimestamp);
             reqStartTimestamp = getMinValue(reqStartTimestamp, getConfigPer());
             final Set<String> queryTableList = getQueryTable(reqStartTimestamp, reqEndTimestamp, currentTableName);
             if (reqEndTimestamp >= (long) totalSize * getConfigPer()) {

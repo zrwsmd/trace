@@ -2,8 +2,11 @@ package com.yt.server.util;
 
 import com.yt.server.entity.UniPoint;
 import org.apache.commons.collections.CollectionUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -12,6 +15,8 @@ import java.util.List;
  * this uses a Min-Max approach to preserve the envelope of the signal.
  */
 public class MinMaxDownsampler {
+
+    private static final Logger logger = LoggerFactory.getLogger(MinMaxDownsampler.class);
 
     /**
      * Downsamples data by dividing it into buckets and keeping the Min and Max values of each bucket.
@@ -54,8 +59,18 @@ public class MinMaxDownsampler {
         sampledPoints.add(firstPoint);
 
         if (threshold == 2) {
-            //targetCount只要求返回2个点，那么就只返回首尾2个点
-            sampledPoints.add(lastPoint);
+            // 当 threshold 为 2 时，使用 Stream 直接找全局最大最小值点
+            UniPoint globalMin = data.stream().min(Comparator.comparingDouble(p -> p.getY().doubleValue())).orElse(data.get(0));
+            UniPoint globalMax = data.stream().max(Comparator.comparingDouble(p -> p.getY().doubleValue())).orElse(data.get(0));
+            sampledPoints.clear();
+            if (globalMin.getX().doubleValue() <= globalMax.getX().doubleValue()) {
+                sampledPoints.add(globalMin);
+                if (globalMin != globalMax) sampledPoints.add(globalMax);
+            } else {
+                sampledPoints.add(globalMax);
+                sampledPoints.add(globalMin);
+            }
+            logger.info("get min max value{}", sampledPoints);
             return sampledPoints;
         }
 
