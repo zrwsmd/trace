@@ -573,7 +573,8 @@ public class AdaptiveDownsamplingSelector {
                 logger.debug(
                         "🔍 Var: {}, Type: {}, Algo: {}, In: {}, Out: {}, NormVol: {}",
                         dataPoints.get(0).getVarName(), signalType, algorithm,
-                        dataPoints.size(), result.size(), features.normalizedVolatility
+                        dataPoints.size(), result.size(),
+                        String.format("%.3f", features.normalizedVolatility)
                 );
             }
 
