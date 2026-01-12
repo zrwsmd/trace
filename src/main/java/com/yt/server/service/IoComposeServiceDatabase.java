@@ -1173,7 +1173,7 @@ public class IoComposeServiceDatabase {
         String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(gap * parentDownsamplingRate));
         downsamplingTableName = BaseUtils.earseLastPoint(downsamplingTableName);
         if (bucketSize > 0) {
-            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.ASYNC_TYPE);
+            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.HANDLE_BIGDOWNSAMPLING);
         }
         List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsamplingDataList, 2);
         BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);

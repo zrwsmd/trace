@@ -25,7 +25,9 @@ public class AdaptiveDownsamplingSelector {
 
     public enum ExecType {
         SYNC_TYPE("sync"),
-        ASYNC_TYPE("async");
+        ASYNC_TYPE("async"),
+        HANDLE_DOWNDATA("handleDownData"),
+        HANDLE_BIGDOWNSAMPLING("handleBigDownsampling");
 
         private final String code;
 
@@ -75,10 +77,8 @@ public class AdaptiveDownsamplingSelector {
      * @return 降采样后的点列表
      */
     public static List<UniPoint> downsample(List<UniPoint> dataPoints, int targetCount, ExecType type) {
-        if (type == AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE) {
-            logger.info("Downsample data points: " + dataPoints.size());
-            logger.info("Downsample target count: " + targetCount);
-        }
+        logger.info("Downsample {} data points {}: ", type.getCode(), dataPoints.size());
+        logger.info("Downsample {} target count {}: ", type.getCode(), targetCount);
         if (CollectionUtils.isEmpty(dataPoints)) {
             return Collections.emptyList();
         }
@@ -1304,15 +1304,15 @@ public class AdaptiveDownsamplingSelector {
     /**
      * * 🔥 v5.0 新增：极值点保护 + 均匀分布算法
      * 解决 NOISE/TREND_NOISE 场景下 LTTB 容易产生点聚合的问题。
-     *      * 核心思路：
-     *      * 1. 首先识别并保护全局极值点（全局最大值、全局最小值）
-     *      * 2. 识别局部极值点（局部峰值和谷值）
-     *      * 3. 剩余配额均匀分布采样
-     *      * 4. 合并去重并按时间排序
-     *      * <p>
-     *      * 这确保了：
-     *      * - 极值点（特征明显的点）永远不会丢失
-     *      * - 采样点在时间轴上分布均匀
+     * * 核心思路：
+     * * 1. 首先识别并保护全局极值点（全局最大值、全局最小值）
+     * * 2. 识别局部极值点（局部峰值和谷值）
+     * * 3. 剩余配额均匀分布采样
+     * * 4. 合并去重并按时间排序
+     * * <p>
+     * * 这确保了：
+     * * - 极值点（特征明显的点）永远不会丢失
+     * * - 采样点在时间轴上分布均匀
      */
     private static List<UniPoint> uniformWithExtremesDownsampling(List<UniPoint> data, int targetCount) {
         if (CollectionUtils.isEmpty(data) || targetCount <= 0) {

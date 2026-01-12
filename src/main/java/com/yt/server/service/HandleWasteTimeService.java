@@ -217,7 +217,7 @@ public class HandleWasteTimeService {
                         continue;
                     }
                     int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
-                    List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.ASYNC_TYPE);
+                    List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.HANDLE_DOWNDATA);
                     String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
                     //save to database
                     List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
