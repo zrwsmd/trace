@@ -143,3 +143,388 @@ $$W = \text{Base}(0.3) + \text{Volatility} \times 1.2 + \text{ComplexityBonus} +
 
 ---
 **版本说明**：v5.0 重点引入了 `UNIFORM_WITH_EXTREMES` 算法，解决了高波动/噪声数据在极端压缩情况下的视觉聚集与极值丢失问题。
+
+---
+
+## 9. HYBRID_ENVELOPE vs UNIFORM_WITH_EXTREMES 深度对比
+
+### 9.1 核心设计理念对比
+
+两个算法虽然都是 v4.0/v5.0 的核心算法,但设计目标和实现策略完全不同:
+
+| 维度       | **HYBRID_ENVELOPE**                      | **UNIFORM_WITH_EXTREMES**             |
+|----------|------------------------------------------|---------------------------------------|
+| **设计目标** | 保留周期性信号的**完整波形包络**                       | 保留极值点 + **时间轴均匀分布**                   |
+| **适用场景** | 周期性/振荡信号 (PERIODIC, AMPLITUDE_MODULATED) | 噪声/复杂信号 (NOISE, TREND_NOISE, COMPLEX) |
+| **核心策略** | 三层混合采样 (包络 + 中心带 + 填充)                   | 极值保护 + 均匀填充                           |
+| **引入版本** | v4.0                                     | v5.0                                  |
+| **主要优势** | 波形包络完整,视觉效果好                             | 极值不丢失,分布均匀                            |
+| **主要劣势** | 时间分布可能不均                                 | 包络保护不如前者                              |
+
+### 9.2 算法实现细节对比
+
+#### 9.2.1 HYBRID_ENVELOPE 实现逻辑
+
+**三层混合策略**:
+
+```java
+// 配额分配
+int envelopeQuota = (int) (targetCount * 0.40);  // 40% → 包络点
+int centerQuota = (int) (targetCount * 0.30);  // 30% → 中心带点
+int fillerQuota = targetCount - envelopeQuota - centerQuota;  // 30% → 填充点
+
+// 第一层: MinMax 包络采样
+List<UniPoint> envelope = MinMaxDownsampler.downsample(data, envelopeQuota);
+
+// 第二层: 中心带采样 (接近均值的点)
+List<UniPoint> centralBand = sampleCentralBand(data, centerQuota);
+
+// 第三层: 填充采样 (LTTB 或均匀)
+List<UniPoint> filler = noisy ? LTTB : uniform;
+
+// 合并去重
+Set<UniPoint> merged = envelope + centralBand + filler;
+```
+
+**特点**:
+
+- ✅ **包络完整**: 40%配额专门用于保留每个周期的峰谷
+- ✅ **中心趋势**: 30%配额保留信号的"骨干"部分
+- ✅ **视觉美观**: 波形连续,适合周期性信号展示
+- ❌ **分布不均**: 可能在某些时间段点密集,某些稀疏
+
+---
+
+#### 9.2.2 UNIFORM_WITH_EXTREMES 实现逻辑
+
+**五步极值保护策略**:
+
+```java
+// 第一步: 识别全局极值
+UniPoint globalMin, globalMax;
+
+// 第二步: 识别局部极值 (15%配额)
+int localExtremeQuota = (int) (targetCount * 0.15);
+List<PointImportance> localExtremes = detectLocalExtremes();
+localExtremes.
+
+sort(byImportance);  // 按显著性排序
+
+// 第三步: 构建必保点集
+Set<Integer> mustKeep = {首点, 尾点, globalMin, globalMax, 重要局部极值};
+
+// 第四步: 均匀填充剩余配额
+int uniformQuota = targetCount - mustKeep.size();
+double step = dataSize / (uniformQuota + 1);
+for(
+int i = 1;
+i <=uniformQuota;i++){
+int index = (int) (i * step);
+    mustKeep.
+
+add(index);
+}
+
+// 第五步: 排序返回
+        return
+
+sortedPoints(mustKeep);
+```
+
+**特点**:
+
+- ✅ **极值不丢**: 全局极值 + 15%重要局部极值永远保留
+- ✅ **分布均匀**: 剩余点均匀分布在时间轴上
+- ✅ **避免聚集**: 解决了 LTTB 在噪声数据上的点聚合问题
+- ❌ **包络不全**: 只保留15%局部极值,可能丢失部分周期的峰谷
+
+### 9.3 为什么不能相互替代?
+
+#### 9.3.1 包络保护能力的差异
+
+**场景**: 10个周期的正弦波, 1000点 → 100点
+
+**HYBRID_ENVELOPE 表现**:
+
+```
+40个包络点 → 每个周期约4个包络点 (10周期 × 4点 = 40点)
+30个中心点 → 每个周期约3个中心点 (10周期 × 3点 = 30点)
+30个填充点 → 补充细节
+
+结果: 每个周期都有清晰的波峰波谷,波形完整
+```
+
+**UNIFORM_WITH_EXTREMES 表现**:
+
+```
+2个全局极值 → 最高峰 + 最低谷
+15个局部极值 → 15% × 100 = 15个点 (可能只覆盖3-4个周期的峰谷)
+83个均匀点 → 均匀分布
+
+结果: 部分周期的峰谷丢失,波形不连续
+```
+
+**结论**: 对于周期性信号,UNIFORM_WITH_EXTREMES 的15%局部极值配额**不足以覆盖所有周期**。
+
+---
+
+#### 9.3.2 中心带采样的重要性
+
+**HYBRID_ENVELOPE** 专门设计了 **30%配额** 用于中心带采样:
+
+```java
+// 在每个 bucket 内寻找最接近均值的点
+List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) {
+    for (int i = 0; i < bucketCount; i++) {
+        // 找到最接近均值的点
+        UniPoint closestToMean = findClosestToMean(bucket);
+        selected.add(closestToMean);
+    }
+}
+```
+
+这对于**调幅信号** (AMPLITUDE_MODULATED) 非常重要:
+
+- 调幅信号的振幅随时间变化
+- 中心带采样能保留信号的"骨干"趋势
+- UNIFORM_WITH_EXTREMES 没有这个机制,只有均匀采样
+
+**示例**: 振幅线性增长的正弦波
+
+```
+原始信号: ∿ ∿∿ ∿∿∿ ∿∿∿∿ ∿∿∿∿∿  (振幅逐渐增大)
+
+HYBRID_ENVELOPE:
+- 包络线: 勾勒出上下边界的增长趋势
+- 中心带: 保留中心线的变化
+- 结果: 清晰展示振幅增长
+
+UNIFORM_WITH_EXTREMES:
+- 只保留最大峰和最小谷
+- 缺少中间过渡的振幅信息
+- 结果: 振幅增长趋势不明显
+```
+
+---
+
+#### 9.3.3 视觉效果对比
+
+**周期性信号降采样效果**:
+
+```
+原始波形 (1000点):
+∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
+
+HYBRID_ENVELOPE (100点):
+∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿∿
+↑ 每个周期都有清晰的波峰波谷,波形连续
+
+UNIFORM_WITH_EXTREMES (100点):
+∿ · · · ∿ · · · ∿ · · · ∿
+↑ 只保留部分周期的极值,波形不连续
+```
+
+**噪声信号降采样效果**:
+
+```
+原始波形 (1000点):
+⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡ (随机噪声)
+
+HYBRID_ENVELOPE (100点):
+⚡ ⚡⚡  ⚡   ⚡⚡⚡ ⚡  ⚡
+↑ 可能在某些区域点聚集,某些区域稀疏
+
+UNIFORM_WITH_EXTREMES (100点):
+⚡ · ⚡ · ⚡ · ⚡ · ⚡ · ⚡ · ⚡ · ⚡
+↑ 时间轴均匀分布,极值点保留,无聚集
+```
+
+### 9.4 实际应用场景举例
+
+#### 9.4.1 场景一: 电机转速监控 (周期性信号)
+
+**数据特征**:
+
+- 信号类型: PERIODIC
+- 原始点数: 10000点
+- 目标点数: 500点
+- 压缩比: 20:1
+
+**算法选择**: `HYBRID_ENVELOPE`
+
+**理由**:
+
+```
+电机转速呈现周期性波动,需要完整展示每个周期的峰谷:
+- 40%配额 (200点) → 保留每个周期的最大最小转速
+- 30%配额 (150点) → 保留平均转速趋势
+- 30%配额 (150点) → 补充细节
+
+结果: 工程师能清晰看到每个周期的转速波动范围
+```
+
+**如果用 UNIFORM_WITH_EXTREMES**:
+
+```
+只保留 15% × 500 = 75个局部极值点
+→ 可能只覆盖部分周期的峰谷
+→ 无法完整展示转速波动规律
+→ ❌ 不适合
+```
+
+---
+
+#### 9.4.2 场景二: 股票价格监控 (噪声信号)
+
+**数据特征**:
+
+- 信号类型: TREND_NOISE
+- 原始点数: 50000点 (一年的日K线)
+- 目标点数: 1000点
+- 压缩比: 50:1
+
+**算法选择**: `UNIFORM_WITH_EXTREMES`
+
+**理由**:
+
+```
+股票价格是随机波动 + 趋势的混合信号:
+- 全局极值: 保留年度最高价和最低价
+- 15%局部极值 (150点): 保留重要的波峰波谷
+- 85%均匀点 (850点): 均匀分布在时间轴上,避免某些月份数据缺失
+
+结果: 既保留了关键极值,又确保时间轴分布均匀
+```
+
+**如果用 HYBRID_ENVELOPE**:
+
+```
+40%配额用于包络 → 但股票价格不是规律的周期性波动
+30%配额用于中心带 → 对随机噪声意义不大
+→ 可能在某些时间段点聚集,某些时间段稀疏
+→ ❌ 不适合
+```
+
+---
+
+#### 9.4.3 场景三: 调幅信号 (振幅增长的正弦波)
+
+**数据特征**:
+
+- 信号类型: AMPLITUDE_MODULATED
+- 原始点数: 20000点
+- 目标点数: 800点
+- 压缩比: 25:1
+
+**算法选择**: `HYBRID_ENVELOPE`
+
+**理由**:
+
+```
+调幅信号的振幅随时间线性增长:
+- 40%包络点 (320点): 勾勒出上下边界的增长趋势
+- 30%中心带点 (240点): 保留中心线的变化 ← 关键!
+- 30%填充点 (240点): 补充细节
+
+结果: 清晰展示振幅从小到大的增长过程
+```
+
+**如果用 UNIFORM_WITH_EXTREMES**:
+
+```
+只保留全局最大峰和最小谷 + 15%局部极值
+→ 缺少中心带采样
+→ 振幅增长的中间过渡信息丢失
+→ ❌ 不适合
+```
+
+### 9.5 可以替代的特殊情况
+
+虽然两个算法各有专长,但在以下情况下可以考虑替代:
+
+#### 9.5.1 压缩比很低 (< 5)
+
+**示例**: 1000点 → 200点
+
+```
+UNIFORM_WITH_EXTREMES 的 15%局部极值 = 30个点
+→ 可能足够覆盖主要的波峰波谷
+→ 此时可以替代 HYBRID_ENVELOPE
+```
+
+#### 9.5.2 周期数很少 (< 3个周期)
+
+**示例**: 只有2个周期的正弦波
+
+```
+全局极值 (2个) + 15%局部极值 (可能10-15个)
+→ 足够覆盖2个周期的所有峰谷
+→ 此时可以替代 HYBRID_ENVELOPE
+```
+
+#### 9.5.3 只需要极值,不需要完整包络
+
+**示例**: 只关心最大值和最小值,不关心波形
+
+```
+UNIFORM_WITH_EXTREMES 更合适
+→ 极值保护更强
+→ 时间分布更均匀
+```
+
+### 9.6 算法选择决策树
+
+```
+开始
+  ↓
+是否为周期性信号? (PERIODIC / AMPLITUDE_MODULATED)
+  ↓ 是
+  → 使用 HYBRID_ENVELOPE
+     理由: 需要完整的包络线和中心带
+  
+  ↓ 否
+是否为噪声/复杂信号? (NOISE / TREND_NOISE / COMPLEX)
+  ↓ 是
+  → 使用 UNIFORM_WITH_EXTREMES
+     理由: 需要均匀分布,避免点聚集
+  
+  ↓ 否
+  → 使用其他算法 (LTTB / PEAK_DETECTION 等)
+```
+
+### 9.7 总结与建议
+
+#### 核心结论:
+
+1. **HYBRID_ENVELOPE** 和 **UNIFORM_WITH_EXTREMES** **不能相互替代**
+2. 两者设计目标不同,各有专长
+3. 保留两个算法,根据信号类型自动选择,是最佳实践
+
+#### 关键差异:
+
+| 维度        | HYBRID_ENVELOPE | UNIFORM_WITH_EXTREMES |
+|-----------|-----------------|-----------------------|
+| **包络保护**  | ⭐⭐⭐⭐⭐ (40%配额)   | ⭐⭐⭐ (15%配额)           |
+| **中心带采样** | ⭐⭐⭐⭐⭐ (30%配额)   | ❌ 无                   |
+| **时间均匀性** | ⭐⭐⭐ (可能不均)      | ⭐⭐⭐⭐⭐ (严格均匀)          |
+| **极值保护**  | ⭐⭐⭐⭐ (包络中包含)    | ⭐⭐⭐⭐⭐ (专门保护)          |
+| **周期性信号** | ⭐⭐⭐⭐⭐ 最佳        | ⭐⭐⭐ 一般                |
+| **噪声信号**  | ⭐⭐⭐ 可能聚集        | ⭐⭐⭐⭐⭐ 最佳              |
+
+#### 最佳实践:
+
+```java
+// 保留两个算法,根据信号类型自动选择
+if(signalType ==SignalType.PERIODIC ||
+signalType ==SignalType.AMPLITUDE_MODULATED){
+        return DownsamplingAlgorithm.HYBRID_ENVELOPE;
+}
+
+        if(signalType ==SignalType.NOISE ||
+signalType ==SignalType.TREND_NOISE ||
+signalType ==SignalType.COMPLEX){
+        return DownsamplingAlgorithm.UNIFORM_WITH_EXTREMES;
+}
+```
+
+**这正是 v5.0 版本的核心设计理念**: 让算法自动识别信号特征,选择最合适的降采样策略,确保在各种场景下都能获得最佳的视觉效果和数据保真度。
