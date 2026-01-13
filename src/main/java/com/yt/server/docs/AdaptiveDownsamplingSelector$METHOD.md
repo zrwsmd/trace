@@ -577,7 +577,7 @@ info.period =bestLag;   // 周期长度
 
 ---
 
-## 综合深度解析：趋势提取与周期检测的联动机制
+### 综合深度解析：趋势提取与周期检测的联动机制
 
 为了彻底理解 `calculateTrendInfo` 和 `detectPeriodicity` 是如何协作的，我们将使用**同一个数据集**，贯穿整个计算流程。
 
@@ -589,7 +589,7 @@ info.period =bestLag;   // 周期长度
 
 下面演示算法是如何一步步拆解它的。
 
-### 第一步：提取趋势 (calculateTrendInfo)
+#### 第一步：提取趋势 (calculateTrendInfo)
 
 首先，算法使用**线性回归 (Linear Regression)** 拟合出数据的“大方向”。
 
@@ -626,7 +626,7 @@ info.period =bestLag;   // 周期长度
 
 ---
 
-### 第二步：周期检测 (detectPeriodicity)
+#### 第二步：周期检测 (detectPeriodicity)
 
 现在，`detectPeriodicity` 方法接收上一步生成的**残差序列** `[-4, 6, -4, 6, -4]` 作为输入。
 
@@ -667,7 +667,7 @@ info.period =bestLag;   // 周期长度
 * **Period (周期)**: 2
 * **Strength (强度)**: High
 
-### 总结
+#### 总结
 
 通过这个统一的例子，我们可以清晰地看到数据是如何流动的：
 
