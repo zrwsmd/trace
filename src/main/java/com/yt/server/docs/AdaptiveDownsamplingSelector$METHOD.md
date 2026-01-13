@@ -391,9 +391,9 @@ List<UniPoint> segmentResult = LTThreeBuckets.sorted(segment, segmentTarget);
 
 ### 数学公式
 
-$$ \text{Slope} = \frac{N \sum(xy) - \sum x \sum y}{N \sum(x^2) - (\sum x)^2} $$
+$$ Slope = \frac{N \sum(xy) - \sum x \sum y}{N \sum(x^2) - (\sum x)^2} $$
 
-$$ \text{Intercept} = \frac{\sum y - \text{Slope} \cdot \sum x}{N} $$
+$$ Intercept = \frac{\sum y - Slope \cdot \sum x}{N} $$
 
 ### 举例说明
 
