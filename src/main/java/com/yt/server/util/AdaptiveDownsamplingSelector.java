@@ -745,7 +745,7 @@ public class AdaptiveDownsamplingSelector {
             info.residuals = Collections.singletonList(0.0);
             return info;
         }
-
+        // 第一步: 计算线性回归参数 (slope, intercept)
         double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
         for (int i = 0; i < n; i++) {
             double y = data.get(i).getY().doubleValue();
@@ -763,24 +763,28 @@ public class AdaptiveDownsamplingSelector {
             info.slope = (n * sumXY - sumX * sumY) / denominator;
             info.intercept = (sumY - info.slope * sumX) / n;
         }
-
+        // 第二步: 计算残差序列及其统计量
         List<Double> residuals = new ArrayList<>(n);
         double minR = Double.POSITIVE_INFINITY, maxR = Double.NEGATIVE_INFINITY;
         double rSum = 0.0, rSumSq = 0.0;
 
         for (int i = 0; i < n; i++) {
+            // 2.1 计算趋势预测值
             double fitted = info.slope * i + info.intercept;
+            // 2.2 计算残差 = 实际值 - 预测值
             double residual = data.get(i).getY().doubleValue() - fitted;
             residuals.add(residual);
-            minR = Math.min(minR, residual);
-            maxR = Math.max(maxR, residual);
-            rSum += residual;
-            rSumSq += residual * residual;
+            minR = Math.min(minR, residual);  // 追踪最小残差
+            maxR = Math.max(maxR, residual);  //  追踪最大残差
+            rSum += residual;  //累加残差和
+            rSumSq += residual * residual;  // 残差平方和
         }
 
         info.residuals = residuals;
+        // 第三步: 计算 residualRange (残差极差)
         info.residualRange = minR == Double.POSITIVE_INFINITY ? 0.0 : maxR - minR;
-        double meanR = rSum / n;
+        double meanR = rSum / n; // 残差均值
+        // 第四步: 计算 residualStdDev (残差标准差)
         info.residualStdDev = Math.sqrt(Math.max(0, rSumSq / n - meanR * meanR));
 
         return info;
