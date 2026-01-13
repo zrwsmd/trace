@@ -446,3 +446,54 @@ $N = 3$
 
 * **趋势判断**：Slope > 0 为上升趋势，Slope < 0 为下降趋势。
 * **去趋势 (Detrending)**：在进行周期性分析（如傅里叶变换或自相关分析）之前，通常需要先减去线性趋势，只保留残差部分，以避免趋势对频率分析的干扰。
+
+### TrendInfo 结果对象详解 (结合代码)
+
+`TrendInfo` 是 `calculateTrendInfo` 方法的返回结果类，用于封装线性回归分析的所有关键指标。
+
+```java
+static class TrendInfo {
+    double slope;
+    double intercept;
+    List<Double> residuals = Collections.emptyList();
+    double residualRange;
+    double residualStdDev;
+}
+```
+
+#### 字段含义与物理意义
+
+1. **slope (double)**
+    * **代码对应**：`info.slope = (n * sumXY - sumX * sumY) / denominator;`
+    * **含义**：趋势线的斜率。
+    * **物理意义**：表示数据的总体变化速率和方向。
+        * `> 0`：总体上升趋势。
+        * `< 0`：总体下降趋势。
+        * `≈ 0`：总体平稳，无明显趋势。
+    * **用途**：判断信号是否发生漂移（Drift），或者计算趋势强度。
+
+2. **intercept (double)**
+    * **代码对应**：`info.intercept = (sumY - info.slope * sumX) / n;`
+    * **含义**：趋势线的截距（即当 x=0 时趋势线的值）。
+    * **物理意义**：趋势线的起始高度。
+    * **用途**：确定趋势线在坐标系中的确切位置。
+
+3. **residuals (List<Double>)**
+    * **代码对应**：`double residual = data.get(i).getY().doubleValue() - fitted;`
+    * **含义**：残差序列列表。
+    * **计算公式**：`residuals[i] = 实际值[i] - 趋势预测值[i]`
+    * **物理意义**：去除了线性趋势后的“纯净”波动数据。包含了噪声、周期性波动和其他非线性特征。
+    * **用途**：这是 `calculateNormalizedVolatility`（归一化波动率）和 `detectPeriodicity`（周期性检测）的核心输入数据。
+
+4. **residualRange (double)**
+    * **代码对应**：`info.residualRange = maxR - minR;`
+    * **含义**：残差的极差（Range）。
+    * **计算公式**：`Max(residuals) - Min(residuals)`
+    * **物理意义**：数据围绕趋势线波动的最大幅度。
+    * **用途**：衡量波动的绝对范围，用于计算信噪比或包络增长率。
+
+5. **residualStdDev (double)**
+    * **代码对应**：`info.residualStdDev = Math.sqrt(Math.max(0, rSumSq / n - meanR * meanR));`
+    * **含义**：残差的标准差（Standard Deviation）。
+    * **物理意义**：衡量数据围绕趋势线波动的离散程度。
+    * **用途**：比 `residualRange` 更稳定地反映波动的平均强度，常用于噪声水平评估。
