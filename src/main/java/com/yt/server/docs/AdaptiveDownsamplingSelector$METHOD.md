@@ -692,6 +692,12 @@ info.period =bestLag;   // 周期长度
 
 `private static List<Double> normalizeSignal(List<Double> values)`
 
+**注意**：尽管该方法的名称是 `normalizeSignal`（标准化信号），但它返回的是一个 `List<Double>`，其中的元素是转换后的 **Z-Score
+值（无量纲统计量）**，而不是某种物理单位的信号。
+
+* `List<Double> values`: 输入的原始信号序列。
+* `return`: 输出的标准化序列，其中每个值代表原始点偏离均值的标准差倍数。
+
 ### 功能说明
 
 该方法用于对输入信号进行**标准化预处理**（Standardization / Z-score Normalization）。即将原始数据转换为**均值为 0、方差为 1
