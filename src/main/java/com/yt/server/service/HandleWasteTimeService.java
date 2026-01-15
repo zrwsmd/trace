@@ -244,4 +244,9 @@ public class HandleWasteTimeService {
 //    }
 
     }
+
+    public void resetShardState() {
+        this.currentShardNum = 0;
+        logger.info("HandleWasteTimeService: currentShardNum reset to 0");
+    }
 }

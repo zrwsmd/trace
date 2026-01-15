@@ -171,6 +171,8 @@ public class IoComposeServiceDatabase {
         Long traceId = 0L;
         String traceConfig = "";
         try {
+            // 在创建新表之前重置降采样状态
+            handleWasteTimeService.resetShardState();
             JSONObject jsonObject = vsCodeReqParam.gettData();
             Set<String> keySet = jsonObject.keySet();
             for (String key : keySet) {
