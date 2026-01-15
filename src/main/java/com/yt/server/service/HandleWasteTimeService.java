@@ -186,6 +186,8 @@ public class HandleWasteTimeService {
                         }
                     }
                     if (currentMaxTimestamp == null || lastMaxTimestamp == null) {
+                        logger.info("traceId:{}", traceId);
+                        logger.info("count:{}", count);
                         logger.info("originalRegionCountSql:{}", originalRegionCountSql);
                     }
                     if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
