@@ -1444,3 +1444,231 @@ noiseRatio< 0.2  →平滑信号 →可用LTTB保持形状
 noiseRatio >0.5  →噪声信号 →用MIN_MAX或极值保护算法
 noiseRatio >1.0  →强噪声   →可能需要数据清洗
 ```
+
+---
+
+## 十、countZeroCrossings (过零率计算)
+
+### 方法签名
+
+`private static int countZeroCrossings(List<UniPoint> data, double baseline)`
+
+### 功能说明
+
+该方法用于计算信号穿过**基准线（Baseline）**的次数。
+
+在信号处理中，"过零率"（Zero-Crossing Rate, ZCR）是一个非常基础且重要的特征，它反映了信号的**频率特性**和**振荡剧烈程度**。
+虽然名字叫"过零"，但在本算法中，我们可以指定任意的 `baseline`（通常是信号的均值 Mean），从而计算信号围绕该基准线的震荡频率。
+
+* **高过零率**：意味着信号频繁地在均值上下跳动，通常对应高频信号或高频噪声。
+* **低过零率**：意味着信号变化缓慢，长时间停留在均值的一侧，通常对应低频信号或趋势信号。
+
+### 核心逻辑步骤
+
+1. **确定初始状态**：
+    * 比较第一个点 `y[0]` 与 `baseline` 的大小关系。
+    * 记录 `above = true` (如果 y > baseline) 或 `false`。
+2. **遍历计数**：
+    * 从第二个点开始遍历整个数据序列。
+    * 对于每个点 `y[i]`，判断其是否在 baseline 之上（`currentAbove`）。
+    * 如果 `currentAbove` 与前一个状态 `above` **不一致**（即发生了翻转），说明信号穿过了基准线。
+    * 计数器 `count` 加 1，并更新当前状态 `above`。
+3. **返回结果**：返回总的穿过次数。
+
+### 核心原理图解
+
+假设 `baseline = 0`：
+
+```text
+      +10 |      /^\      (above=true)
+          |     /   ----------|----/-----\---------- baseline (0)
+          |   /       \   /
+      -10 |  /         \_/    (above=false)
+```
+
+* 当线条从上往下穿过横轴时，计 1 次。
+* 当线条从下往上穿过横轴时，计 1 次。
+
+### 举例说明
+
+#### 示例 1：高频振荡信号
+
+**数据**: `[10, -10, 10, -10, 10]`
+**基准线 (Baseline)**: `0.0`
+
+* **i=0**: `10 > 0` -> `above = true`
+* **i=1**: `-10 < 0` -> `current = false` (≠ above) -> **Count = 1**, `above = false`
+* **i=2**: `10 > 0`  -> `current = true`  (≠ above) -> **Count = 2**, `above = true`
+* **i=3**: `-10 < 0` -> `current = false` (≠ above) -> **Count = 3**, `above = false`
+* **i=4**: `10 > 0`  -> `current = true`  (≠ above) -> **Count = 4**, `above = true`
+
+**结果**: **4**。
+**解读**: 信号在 5 个点内穿过基准线 4 次，说明这是频率极高的震荡信号。
+
+#### 示例 2：低频趋势信号
+
+**数据**: `[-5, -2, 1, 3, 5]` (缓慢上升)
+**基准线 (Baseline)**: `0.0`
+
+* **i=0**: `-5 < 0` -> `above = false`
+* **i=1**: `-2 < 0` -> `current = false` (== above) -> Count不变
+* **i=2**: `1 > 0`  -> `current = true`  (≠ above) -> **Count = 1**, `above = true`
+* **i=3**: `3 > 0`  -> `current = true`  (== above) -> Count不变
+* **i=4**: `5 > 0`  -> `current = true`  (== above) -> Count不变
+
+**结果**: **1**。
+**解读**: 信号只穿过了一次基准线，说明这是一个单调变化的趋势信号，频率很低。
+
+### 代码实现细节
+
+```java
+private static int countZeroCrossings(List<UniPoint> data, double baseline) {
+    if (data.size() < 2) return 0;
+
+    int count = 0;
+    // 1. 初始化状态
+    boolean above = data.get(0).getY().doubleValue() > baseline;
+
+    for (int i = 1; i < data.size(); i++) {
+        // 2. 判断当前状态
+        boolean currentAbove = data.get(i).getY().doubleValue() > baseline;
+
+        // 3. 状态翻转检测
+        if (currentAbove != above) {
+            count++;
+            above = currentAbove; // 更新状态
+        }
+    }
+    return count;
+}
+```
+
+### 适用场景与应用
+
+在 中，虽然 的结果包含在 中，但在当前的 逻辑中，它主要作为一个辅助特征。
+
+但在更复杂的信号分析中，它的作用包括：
+
+1. **基频估算**：对于周期信号，`频率 ≈ 过零率 / 2`。这可以用来辅助校验 `detectPeriodicity` 计算出的周期是否准确。
+2. **静音检测**：在音频处理中，低过零率通常对应静音或浊音，高过零率对应清音（噪音）。
+3. **模式识别**：区分 "缓慢漂移"（ZeroCrossings ≈ 0）和 "围绕均值波动"（ZeroCrossings >> 0）。
+
+### 局限性
+
+* **对噪声敏感**：如果信号在基准线附近有微小的随机抖动（例如 0.01, -0.01, 0.01），会导致过零率虚高。
+    * *解决方案*：通常需要引入一个 "死区" (Dead Zone) 或滞回比较器 (Hysteresis)，只有跳变幅度超过一定阈值才计数。但当前实现是一个简单的几何过零检测。
+
+---
+
+## 十一、countZeroCrossings (过零率计算)
+
+### 方法签名
+
+`private static int countZeroCrossings(List<UniPoint> data, double baseline)`
+
+### 功能说明
+
+该方法用于计算信号穿过**基准线（Baseline）**的次数。
+
+在信号处理中，"过零率"（Zero-Crossing Rate, ZCR）是一个非常基础且重要的特征，它反映了信号的**频率特性**和**振荡剧烈程度**。
+虽然名字叫"过零"，但在本算法中，我们可以指定任意的 `baseline`（通常是信号的均值 Mean），从而计算信号围绕该基准线的震荡频率。
+
+* **高过零率**：意味着信号频繁地在均值上下跳动，通常对应高频信号或高频噪声。
+* **低过零率**：意味着信号变化缓慢，长时间停留在均值的一侧，通常对应低频信号或趋势信号。
+
+### 核心逻辑步骤
+
+1. **确定初始状态**：
+    * 比较第一个点 `y[0]` 与 `baseline` 的大小关系。
+    * 记录 `above = true` (如果 y > baseline) 或 `false`。
+2. **遍历计数**：
+    * 从第二个点开始遍历整个数据序列。
+    * 对于每个点 `y[i]`，判断其是否在 baseline 之上（`currentAbove`）。
+    * 如果 `currentAbove` 与前一个状态 `above` **不一致**（即发生了翻转），说明信号穿过了基准线。
+    * 计数器 `count` 加 1，并更新当前状态 `above`。
+3. **返回结果**：返回总的穿过次数。
+
+### 核心原理图解
+
+假设 `baseline = 0`：
+
+```text
+      +10 |      /^\      (above=true)
+          |     /   \
+----------|----/-----\---------- baseline (0)
+          |   /       \   /
+      -10 |  /         \_/    (above=false)
+```
+
+* 当线条从上往下穿过横轴时，计 1 次。
+* 当线条从下往上穿过横轴时，计 1 次。
+
+### 举例说明
+
+#### 示例 1：高频振荡信号
+
+**数据**: `[10, -10, 10, -10, 10]`
+**基准线 (Baseline)**: `0.0`
+
+* **i=0**: `10 > 0` -> `above = true`
+* **i=1**: `-10 < 0` -> `current = false` (≠ above) -> **Count = 1**, `above = false`
+* **i=2**: `10 > 0`  -> `current = true`  (≠ above) -> **Count = 2**, `above = true`
+* **i=3**: `-10 < 0` -> `current = false` (≠ above) -> **Count = 3**, `above = false`
+* **i=4**: `10 > 0`  -> `current = true`  (≠ above) -> **Count = 4**, `above = true`
+
+**结果**: **4**。
+**解读**: 信号在 5 个点内穿过基准线 4 次，说明这是频率极高的震荡信号。
+
+#### 示例 2：低频趋势信号
+
+**数据**: `[-5, -2, 1, 3, 5]` (缓慢上升)
+**基准线 (Baseline)**: `0.0`
+
+* **i=0**: `-5 < 0` -> `above = false`
+* **i=1**: `-2 < 0` -> `current = false` (== above) -> Count不变
+* **i=2**: `1 > 0`  -> `current = true`  (≠ above) -> **Count = 1**, `above = true`
+* **i=3**: `3 > 0`  -> `current = true`  (== above) -> Count不变
+* **i=4**: `5 > 0`  -> `current = true`  (== above) -> Count不变
+
+**结果**: **1**。
+**解读**: 信号只穿过了一次基准线，说明这是一个单调变化的趋势信号，频率很低。
+
+### 代码实现细节
+
+```java
+private static int countZeroCrossings(List<UniPoint> data, double baseline) {
+    if (data.size() < 2) return 0;
+
+    int count = 0;
+    // 1. 初始化状态
+    boolean above = data.get(0).getY().doubleValue() > baseline;
+
+    for (int i = 1; i < data.size(); i++) {
+        // 2. 判断当前状态
+        boolean currentAbove = data.get(i).getY().doubleValue() > baseline;
+
+        // 3. 状态翻转检测
+        if (currentAbove != above) {
+            count++;
+            above = currentAbove; // 更新状态
+        }
+    }
+    return count;
+}
+```
+
+### 适用场景与应用
+
+在 `AdaptiveDownsamplingSelector` 中，虽然 `countZeroCrossings` 的结果包含在 `SignalFeatures` 中，但在当前的
+`classifySignal` 逻辑中，它主要作为一个辅助特征。
+
+但在更复杂的信号分析中，它的作用包括：
+
+1. **基频估算**：对于周期信号，`频率 ≈ 过零率 / 2`。这可以用来辅助校验 `detectPeriodicity` 计算出的周期是否准确。
+2. **静音检测**：在音频处理中，低过零率通常对应静音或浊音，高过零率对应清音（噪音）。
+3. **模式识别**：区分 "缓慢漂移"（ZeroCrossings ≈ 0）和 "围绕均值波动"（ZeroCrossings >> 0）。
+
+### 局限性
+
+* **对噪声敏感**：如果信号在基准线附近有微小的随机抖动（例如 0.01, -0.01, 0.01），会导致过零率虚高。
+    * *解决方案*：通常需要引入一个 "死区" (Dead Zone) 或滞回比较器 (Hysteresis)，只有跳变幅度超过一定阈值才计数。但当前实现是一个简单的几何过零检测。
