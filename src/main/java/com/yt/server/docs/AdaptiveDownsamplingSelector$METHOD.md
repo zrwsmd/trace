@@ -2066,7 +2066,7 @@ if (signalType == SignalType.PERIODIC || signalType == SignalType.AMPLITUDE_MODU
 
 ---
 
-## 十一、uniformDownsampling (均匀降采样)
+## 十二、uniformDownsampling (均匀降采样)
 
 ### 方法签名
 
