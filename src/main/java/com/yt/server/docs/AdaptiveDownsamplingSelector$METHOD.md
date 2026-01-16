@@ -1099,8 +1099,7 @@ Z-score 难以超过 10（数学极限为 $\sqrt{N-1}$）。
 ```java
 smoothChange(二阶导数总和) =0+0+0=0
 
-totalChange(一阶总变化)  =20+20+20=60
-
+totalChange(一阶总变化) =20+20+20=60
 noiseRatio =0/60=0.0
 ```
 
@@ -1195,8 +1194,7 @@ totalChange(跨两步的总变化) =0+0+0=0  ←极端情况!
 
 ```java
 smoothChange =7+7+7+8+8=37
-totalChange  =3+3+3+4+4=17
-
+totalChange =3+3+4+4+3=17
 noiseRatio =37/17 ≈ 2.18
 ```
 
@@ -1314,11 +1312,11 @@ if(features.volatility >10&&features.noiseRatio >NOISE_RATIO_THRESHOLD){
 }
 
 // 解释:
-volatility >10      →
+volatility >10 →
 
 信号变化非常剧烈(总路径长)
 
-noiseRatio >0.5     →
+noiseRatio >0.5 →
 
 变化方向频繁改变(高频抖动)
 →两者结合 =典型的随机噪声!
@@ -1442,7 +1440,7 @@ noiseRatio = Σ|y[i+1] - 2×y[i] + y[i-1]| / Σ|y[i+1] - y[i-1]|
 ```java
 noiseRatio< 0.2  →平滑信号 →可用LTTB保持形状
 noiseRatio >0.5  →噪声信号 →用MIN_MAX或极值保护算法
-noiseRatio >1.0  →强噪声   →可能需要数据清洗
+noiseRatio >1.0  →强噪声 →可能需要数据清洗
 ```
 
 ---
@@ -1693,7 +1691,7 @@ private static List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) 
 
 ```java
 boolean noisy = features != null && features.noiseRatio > NOISE_RATIO_THRESHOLD;
-filler =noisy 
+filler =noisy
     ?LTThreeBuckets.
 
 sorted(data, fillerQuota)      // 噪声数据用LTTB
@@ -1711,40 +1709,20 @@ uniformDownsampling([原始12点], 2):
 ```
 
 #### 第五步: 合并去重
-
-```java
 LinkedHashSet<UniPoint> merged = new LinkedHashSet<>(targetCount);
-merged.
-
-addAll(envelope);      // 4个包络点
-merged.
-
-addAll(centralBand);   // 2个中心点
-merged.
-
-addAll(filler);        // 2个填充点
+merged.addAll(envelope); // 4个包络点
+merged.addAll(centralBand); // 2个中心点
+merged.addAll(filler); // 2个填充点
 
 // 去除边界重复点
-if(!result.
-
-isEmpty() &&!windowResult.
-
-isEmpty()){
-        if(
-
-pointsEqual(result.get(result.size() -1),windowResult.
-
-get(0))){
-windowResult =windowResult.
-
-subList(1,windowResult.size());
-        }
-        }
+if (!result.isEmpty() && !windowResult.isEmpty()) {
+if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
+windowResult = windowResult.subList(1, windowResult.size());
+}
+}
 
 // 按时间排序
-        mergedList.
-
-sort(Comparator.comparing(UniPoint::getX));
+mergedList.sort(Comparator.comparing(UniPoint::getX));
 ```
 
 ---
