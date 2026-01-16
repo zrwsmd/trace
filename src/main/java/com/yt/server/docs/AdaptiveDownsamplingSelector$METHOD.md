@@ -3010,166 +3010,101 @@ UniPoint globalMax = data.get(0);
 int globalMinIdx = 0;
 int globalMaxIdx = 0;
 
-for(
-int i = 1; i <data.
-
-size();
-
-i++){
-double y = data.get(i).getY().doubleValue();
-    if(y <globalMin.
-
-getY().
-
-doubleValue()){
-globalMin =data.
-
-get(i);
-
-globalMinIdx =i;
+for (int i = 1; i < data.size(); i++) {
+    double y = data.get(i).getY().doubleValue();
+    if (y < globalMin.getY().doubleValue()) {
+        globalMin = data.get(i);
+        globalMinIdx = i;
     }
-            if(y >globalMax.
-
-getY().
-
-doubleValue()){
-globalMax =data.
-
-get(i);
-
-globalMaxIdx =i;
+    if (y > globalMax.getY().doubleValue()) {
+        globalMax = data.get(i);
+        globalMaxIdx = i;
     }
-            }
+}
 
 // ========== 第二步：识别局部极值 ==========
 int localExtremeQuota = Math.max(2, (int) Math.round(targetCount * 0.15));
 List<PointImportance> localExtremes = new ArrayList<>();
 
-for(
-int i = 1; i <data.
+for (int i = 1; i < data.size() - 1; i++) {
+    double prev = data.get(i - 1).getY().doubleValue();
+    double curr = data.get(i).getY().doubleValue();
+    double next = data.get(i + 1).getY().doubleValue();
 
-size() -1;i++){
-double prev = data.get(i - 1).getY().doubleValue();
-double curr = data.get(i).getY().doubleValue();
-double next = data.get(i + 1).getY().doubleValue();
-
-// 局部极大值
-    if(curr >prev &&curr >next){
-double prominence = Math.min(curr - prev, curr - next);
-        localExtremes.
-
-add(new PointImportance(i, prominence));
-        }
-        // 局部极小值
-        else if(curr<prev &&curr<next){
-double prominence = Math.min(prev - curr, next - curr);
-        localExtremes.
-
-add(new PointImportance(i, prominence));
-        }
-        }
+    // 局部极大值
+    if (curr > prev && curr > next) {
+        double prominence = Math.min(curr - prev, curr - next);
+        localExtremes.add(new PointImportance(i, prominence));
+    }
+    // 局部极小值
+    else if (curr < prev && curr < next) {
+        double prominence = Math.min(prev - curr, next - curr);
+        localExtremes.add(new PointImportance(i, prominence));
+    }
+}
 
 // 按显著性排序
-        localExtremes.
-
-sort((a, b) ->Double.
-
-compare(b.importance, a.importance));
+localExtremes.sort((a, b) -> Double.compare(b.importance, a.importance));
 
 // ========== 第三步：构建必保点集 ==========
 Set<Integer> mustKeepIndices = new LinkedHashSet<>();
-mustKeepIndices.
-
-add(0);  // 首点
-mustKeepIndices.
-
-add(data.size() -1);  // 尾点
-        mustKeepIndices.
-
-add(globalMinIdx);  // 全局最小值
-mustKeepIndices.
-
-add(globalMaxIdx);  // 全局最大值
+mustKeepIndices.add(0);  // 首点
+mustKeepIndices.add(data.size() - 1);  // 尾点
+mustKeepIndices.add(globalMinIdx);  // 全局最小值
+mustKeepIndices.add(globalMaxIdx);  // 全局最大值
 
 // 添加重要的局部极值
 int localAdded = 0;
-for(
-PointImportance extreme :localExtremes){
-        if(localAdded >=localExtremeQuota)break;
-        if(!mustKeepIndices.
-
-contains(extreme.index)){
-        mustKeepIndices.
-
-add(extreme.index);
-
-localAdded++;
-        }
-        }
+for (PointImportance extreme : localExtremes) {
+    if (localAdded >= localExtremeQuota) break;
+    if (!mustKeepIndices.contains(extreme.index)) {
+        mustKeepIndices.add(extreme.index);
+        localAdded++;
+    }
+}
 
 // ========== 第四步：均匀填充 ==========
 int uniformQuota = targetCount - mustKeepIndices.size();
 
-if(uniformQuota >0){
-double step = (double) (data.size() - 1) / (uniformQuota + 1);
-    
-    for(
-int i = 1;
-i <=uniformQuota;i++){
-int index = (int) Math.round(i * step);
+if (uniformQuota > 0) {
+    double step = (double) (data.size() - 1) / (uniformQuota + 1);
 
-// 冲突处理：如果该位置已被占用，向两侧搜索
-        if(mustKeepIndices.
+    for (int i = 1; i <= uniformQuota; i++) {
+        int index = (int) Math.round(i * step);
 
-contains(index)){
-int left = index - 1;
-int right = index + 1;
-            while(left >=0||right <data.
-
-size()){
-        if(left >=0&&!mustKeepIndices.
-
-contains(left)){
-index =left;
+        // 冲突处理：如果该位置已被占用，向两侧搜索
+        if (mustKeepIndices.contains(index)) {
+            int left = index - 1;
+            int right = index + 1;
+            while (left >= 0 || right < data.size()) {
+                if (left >= 0 && !mustKeepIndices.contains(left)) {
+                    index = left;
                     break;
-                            }
-                            if(right <data.
-
-size() &&!mustKeepIndices.
-
-contains(right)){
-index =right;
+                }
+                if (right < data.size() && !mustKeepIndices.contains(right)) {
+                    index = right;
                     break;
-                            }
-left--;
-right++;
-        }
+                }
+                left--;
+                right++;
+            }
         }
 
-        mustKeepIndices.
-
-add(index);
-        if(mustKeepIndices.
-
-size() >=targetCount)break;
-        }
-        }
+        mustKeepIndices.add(index);
+        if (mustKeepIndices.size() >= targetCount) break;
+    }
+}
 
 // ========== 第五步：排序输出 ==========
 List<UniPoint> result = new ArrayList<>();
 List<Integer> sortedIndices = new ArrayList<>(mustKeepIndices);
-Collections.
+Collections.sort(sortedIndices);
 
-sort(sortedIndices);
+for (int idx : sortedIndices) {
+    result.add(data.get(idx));
+}
 
-for(
-int idx :sortedIndices){
-        result.
-
-add(data.get(idx));
-        }
-
-        return result;
+return result;
 ```
 
 ---
