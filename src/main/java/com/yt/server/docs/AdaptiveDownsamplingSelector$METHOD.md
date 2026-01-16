@@ -1,5 +1,25 @@
 # AdaptiveDownsamplingSelector 降采样方法详解
 
+---
+
+## 📋 目录 (Table of Contents)
+
+- [一、peakDetectionDownsampling (峰值检测降采样)](#一peakdetectiondownsampling-峰值检测降采样)
+- [二、adaptiveLTTB (自适应LTTB)](#二adaptivelttb-自适应lttb)
+- [三、calculateNormalizedVolatility (归一化波动率计算)](#三calculatenormalizedvolatility-归一化波动率计算)
+- [四、calculateTrendInfo (趋势信息计算/线性回归)](#四calculatetrendinfo-趋势信息计算线性回归)
+- [五、detectPeriodicity (信号周期性检测)](#五detectperiodicity-信号周期性检测)
+- [六、normalizeSignal (信号标准化)](#六normalizesignal-信号标准化)
+- [七、calculateAutocorrelationNormalized (标准化自相关计算)](#七calculateautocorrelationnormalized-标准化自相关计算)
+- [八、detectSteps (阶跃检测)](#八detectsteps-阶跃检测)
+- [九、calculateNoiseRatio (噪声占比计算)](#九calculatenoiseratio-噪声占比计算)
+- [十、countZeroCrossings (过零率计算)](#十countzerocrossings-过零率计算)
+- [十一、hybridEnvelopeDownsampling (混合包络降采样)](#十一hybridenvelopedownsampling-混合包络降采样)
+- [十二、uniformDownsampling (均匀降采样)](#十二uniformdownsampling-均匀降采样)
+- [十三、uniformWithExtremesDownsampling (极值点保护 + 均匀分布降采样)](#十三uniformwithextremesdownsampling-极值点保护--均匀分布降采样--v50-新增)
+
+---
+
 ## 一、peakDetectionDownsampling (峰值检测降采样)
 
 `com.yt.server.util.AdaptiveDownsamplingSelector#peakDetectionDownsampling` 是一个基于**特征重要性**排序的降采样算法。
