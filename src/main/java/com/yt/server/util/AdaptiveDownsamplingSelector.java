@@ -1584,6 +1584,9 @@ public class AdaptiveDownsamplingSelector {
             totalChange += Math.abs(
                     segment.get(i).getY().doubleValue() - segment.get(i - 1).getY().doubleValue());
         }
+        // +1.0 的原因：
+        // 1. 防止 totalChange 为 0 导致后续除法运算出现除以零异常
+        // 2. 为平稳线段（totalChange=0）提供基础权重，确保它们也能分到最基本的采样点，而不是被完全忽略
         return totalChange + 1.0;
     }
 
