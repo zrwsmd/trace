@@ -129,47 +129,29 @@
 importances.add(new PointImportance(0, Double.MAX_VALUE));
 
 // 2. 遍历中间点计算二阶差分
-        for(
-int i = 1; i <data.
-
-size() -1;i++){
-double prev = data.get(i - 1).getY().doubleValue();
-double curr = data.get(i).getY().doubleValue();
-double next = data.get(i + 1).getY().doubleValue();
-// 对应公式 |next - 2*curr + prev|
-    importances.
-
-add(new PointImportance(i, Math.abs(next-2*curr+prev)));
-        }
+for (int i = 1; i < data.size() - 1; i++) {
+    double prev = data.get(i - 1).getY().doubleValue();
+    double curr = data.get(i).getY().doubleValue();
+    double next = data.get(i + 1).getY().doubleValue();
+    // 对应公式 |next - 2*curr + prev|
+    importances.add(new PointImportance(i, Math.abs(next - 2 * curr + prev)));
+}
 
 // 3. 初始化尾点重要性为无穷大
-        importances.
-
-add(new PointImportance(data.size() -1,Double.MAX_VALUE));
+importances.add(new PointImportance(data.size() - 1, Double.MAX_VALUE));
 
 // 4. 按重要性倒序排序
-        importances.
-
-sort((a, b) ->Double.
-
-compare(b.importance, a.importance));
+importances.sort((a, b) -> Double.compare(b.importance, a.importance));
 
 // 5. 取前 targetCount 个点的索引
 Set<Integer> selectedIndices = new HashSet<>();
-for(
-int i = 0; i <Math.
-
-min(targetCount, importances.size());i++){
-        selectedIndices.
-
-add(importances.get(i).index);
-        }
+for (int i = 0; i < Math.min(targetCount, importances.size()); i++) {
+    selectedIndices.add(importances.get(i).index);
+}
 
 // 6. 按原始索引顺序重组数据
 List<Integer> sortedIndices = new ArrayList<>(selectedIndices);
-Collections.
-
-sort(sortedIndices);
+Collections.sort(sortedIndices);
 ```
 
 ### 适用场景
@@ -241,27 +223,19 @@ sort(sortedIndices);
 
 ```java
 // 1. 分段计算复杂度
-for(int i = 0;
-i<numSegments;i++){
-// ... 切分数据 ...
-double complexity = calculateSegmentComplexity(segment);
-    segmentComplexity.
-
-add(complexity);
-
-totalComplexity +=complexity;
+for (int i = 0; i < numSegments; i++) {
+    // ... 切分数据 ...
+    double complexity = calculateSegmentComplexity(segment);
+    segmentComplexity.add(complexity);
+    totalComplexity += complexity;
 }
 
 // 2. 根据复杂度分配点数并执行 LTTB
-        for(
-int i = 0;
-i<numSegments;i++){
-// ...
-// 按比例分配点数
-int segmentTarget = (int) Math.round(targetCount * segmentComplexity.get(i) / totalComplexity);
-segmentTarget =Math.
-
-max(2,segmentTarget); // 至少保留2点
+for (int i = 0; i < numSegments; i++) {
+    // ...
+    // 按比例分配点数
+    int segmentTarget = (int) Math.round(targetCount * segmentComplexity.get(i) / totalComplexity);
+    segmentTarget = Math.max(2, segmentTarget); // 至少保留2点
 
 // 执行 LTTB
 List<UniPoint> segmentResult = LTThreeBuckets.sorted(segment, segmentTarget);
@@ -1097,10 +1071,9 @@ Z-score 难以超过 10（数学极限为 $\sqrt{N-1}$）。
 **统计结果:**
 
 ```java
-smoothChange(二阶导数总和) =0+0+0=0
-
-totalChange(一阶总变化) =20+20+20=60
-noiseRatio =0/60=0.0
+smoothChange(二阶导数总和) = 0 + 0 + 0 = 0
+totalChange(一阶总变化) = 20 + 20 + 20 = 60
+noiseRatio = 0 / 60 = 0.0
 ```
 
 **结论**: **0.0** → 完全无噪声,是纯粹的平滑信号。
@@ -1129,28 +1102,20 @@ noiseRatio =0/60=0.0
 
 **代码对应:**
 ```java
-for(int i = 1; i <data.
+for (int i = 1; i < data.size() - 1; i++) {
+    double y0 = data.get(i - 1).getY().doubleValue();  // 10, 30, 10
+    double y1 = data.get(i).getY().doubleValue();      // 30, 10, 30
+    double y2 = data.get(i + 1).getY().doubleValue();  // 10, 30, 10
 
-size() -1;i++){
-double y0 = data.get(i - 1).getY().doubleValue();  // 10, 30, 10
-double y1 = data.get(i).getY().doubleValue();      // 30, 10, 30
-double y2 = data.get(i + 1).getY().doubleValue();  // 10, 30, 10
-
-smoothChange +=Math.
-
-abs(y2 -2*y1+y0);  // 40 + 40 + 40
-
-totalChange +=Math.
-
-abs(y2 -y0);            // 0 + 0 + 0
+    smoothChange += Math.abs(y2 - 2 * y1 + y0);  // 40 + 40 + 40
+    totalChange += Math.abs(y2 - y0);            // 0 + 0 + 0
 }
 ```
 
 **统计结果:**
 ```java
-smoothChange(二阶导数总和) =40+40+40=120
-
-totalChange(跨两步的总变化) =0+0+0=0  ←极端情况!
+smoothChange(二阶导数总和) = 40 + 40 + 40 = 120
+totalChange(跨两步的总变化) = 0 + 0 + 0 = 0  ←极端情况!
 
 // 实际代码会避免除零,但这个例子很好地展示了:
 // 当信号在原地震荡时,虽然总位移为0,但二阶导数(抖动)极大!
@@ -1193,9 +1158,9 @@ totalChange(跨两步的总变化) =0+0+0=0  ←极端情况!
 **统计结果:**
 
 ```java
-smoothChange =7+7+7+8+8=37
-totalChange =3+3+4+4+3=17
-noiseRatio =37/17 ≈ 2.18
+smoothChange = 7 + 7 + 7 + 8 + 8 = 37
+totalChange = 3 + 3 + 4 + 4 + 3 = 17
+noiseRatio = 37 / 17 ≈ 2.18
 ```
 
 **结论**: **2.18** → 噪声占比很高,虽然总体在上升,但过程中频繁"拐来拐去"。
@@ -1278,8 +1243,8 @@ private static double calculateNoiseRatio(List<UniPoint> data) {
 private static final double NOISE_RATIO_THRESHOLD = 0.5;
 
 // 信号分类逻辑
-if(features.volatility >10&&features.noiseRatio >NOISE_RATIO_THRESHOLD){
-        return SignalType.NOISE;  // 判定为噪声信号
+if (features.volatility > 10 && features.noiseRatio > NOISE_RATIO_THRESHOLD) {
+    return SignalType.NOISE;  // 判定为噪声信号
 }
 ```
 
@@ -1307,19 +1272,14 @@ if(features.volatility >10&&features.noiseRatio >NOISE_RATIO_THRESHOLD){
 
 ```java
 // 代码中的组合判断:
-if(features.volatility >10&&features.noiseRatio >NOISE_RATIO_THRESHOLD){
-        return SignalType.NOISE;
+if (features.volatility > 10 && features.noiseRatio > NOISE_RATIO_THRESHOLD) {
+    return SignalType.NOISE;
 }
 
 // 解释:
-volatility >10 →
-
-信号变化非常剧烈(总路径长)
-
-noiseRatio >0.5 →
-
-变化方向频繁改变(高频抖动)
-→两者结合 =典型的随机噪声!
+volatility > 10 → 信号变化非常剧烈(总路径长)
+noiseRatio > 0.5 → 变化方向频繁改变(高频抖动)
+→ 两者结合 = 典型的随机噪声!
 ```
 
 ---
@@ -1353,9 +1313,7 @@ return totalChange< 1e-6?0.0:smoothChange /totalChange;
 
 ```java
 // AdaptiveDownsamplingSelector.java:656
-features.noiseRatio =
-
-calculateNoiseRatio(data);
+features.noiseRatio = calculateNoiseRatio(data);
 
 // 在信号分类中的应用:
 private static SignalType classifySignal(SignalFeatures features) {
@@ -1438,9 +1396,9 @@ noiseRatio = Σ|y[i+1] - 2×y[i] + y[i-1]| / Σ|y[i+1] - y[i-1]|
 #### 典型阈值
 
 ```java
-noiseRatio< 0.2  →平滑信号 →可用LTTB保持形状
-noiseRatio >0.5  →噪声信号 →用MIN_MAX或极值保护算法
-noiseRatio >1.0  →强噪声 →可能需要数据清洗
+noiseRatio < 0.2  → 平滑信号 → 可用LTTB保持形状
+noiseRatio > 0.5  → 噪声信号 → 用MIN_MAX或极值保护算法
+noiseRatio > 1.0  → 强噪声 → 可能需要数据清洗
 ```
 
 ---
@@ -1691,13 +1649,9 @@ private static List<UniPoint> sampleCentralBand(List<UniPoint> data, int quota) 
 
 ```java
 boolean noisy = features != null && features.noiseRatio > NOISE_RATIO_THRESHOLD;
-filler =noisy
-    ?LTThreeBuckets.
-
-sorted(data, fillerQuota)      // 噪声数据用LTTB
-    :
-
-uniformDownsampling(data, fillerQuota);       // 平滑数据用均匀采样
+filler = noisy
+    ? LTThreeBuckets.sorted(data, fillerQuota)      // 噪声数据用LTTB
+    : uniformDownsampling(data, fillerQuota);       // 平滑数据用均匀采样
 ```
 
 **示例 (假设是平滑信号,需要2个填充点):**
@@ -1716,9 +1670,9 @@ merged.addAll(filler); // 2个填充点
 
 // 去除边界重复点
 if (!result.isEmpty() && !windowResult.isEmpty()) {
-if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
-windowResult = windowResult.subList(1, windowResult.size());
-}
+    if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
+        windowResult = windowResult.subList(1, windowResult.size());
+    }
 }
 
 // 按时间排序
@@ -1820,20 +1774,20 @@ uniformDownsampling(20点, 3):
 #### 步骤5: 合并去重
 
 ```java
-merged ={
-        // 包络
-        10(t=6),0(t=8),14(t=16),-4(t=18),
-        // 中心带
-        5(t=0),5(t=10),5(t=15),
-        // 填充
-        5(t=0)[重复,去除],5(t=10)[重复,去除],5(t=19)
-        }
+merged = {
+    // 包络
+    10(t=6), 0(t=8), 14(t=16), -4(t=18),
+    // 中心带
+    5(t=0), 5(t=10), 5(t=15),
+    // 填充
+    5(t=0)[重复, 去除], 5(t=10)[重复, 去除], 5(t=19)
+}
 
 // 去重后
-merged ={5(t=0),10(t=6),0(t=8),5(t=10),5(t=15),14(t=16),-4(t=18),5(t=19)}
+merged = {5(t=0), 10(t=6), 0(t=8), 5(t=10), 5(t=15), 14(t=16), -4(t=18), 5(t=19)}
 
 // 排序后
-result =[5,10,0,5,5,14,-4,5](8个点)
+result = [5, 10, 0, 5, 5, 14, -4, 5] (8个点)
 ```
 
 #### 步骤6: 归一化 (确保10个点)
@@ -1948,15 +1902,11 @@ v4.0: 40%×10 = 4点   → 每个周期约0.4点  (更接近1个峰谷对)
 boolean noisy = features.noiseRatio > NOISE_RATIO_THRESHOLD;
 
 // 高噪声信号 (noiseRatio > 0.5)
-filler =LTThreeBuckets.
-
-sorted(data, fillerQuota);
+filler = LTThreeBuckets.sorted(data, fillerQuota);
 // → LTTB能更好地保留噪声信号的"随机性"特征
 
 // 平滑信号 (noiseRatio ≤ 0.5)
-filler =
-
-uniformDownsampling(data, fillerQuota);
+filler = uniformDownsampling(data, fillerQuota);
 // → 均匀采样确保时间轴分布的规律性
 ```
 
@@ -2096,9 +2046,8 @@ private static List<UniPoint> hybridEnvelopeDownsampling(
 
 ```java
 // 在算法路由矩阵中的位置
-if(signalType ==SignalType.PERIODIC ||
-signalType ==SignalType.AMPLITUDE_MODULATED){
-        return DownsamplingAlgorithm.HYBRID_ENVELOPE;
+if (signalType == SignalType.PERIODIC || signalType == SignalType.AMPLITUDE_MODULATED) {
+    return DownsamplingAlgorithm.HYBRID_ENVELOPE;
 }
 ```
 
