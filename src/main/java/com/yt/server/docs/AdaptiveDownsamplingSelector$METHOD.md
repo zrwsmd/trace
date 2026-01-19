@@ -18,6 +18,7 @@
 - [十二、uniformDownsampling (均匀降采样)](#十二uniformdownsampling-均匀降采样)
 - [十三、uniformWithExtremesDownsampling (极值点保护 + 均匀分布降采样)](#十三uniformwithextremesdownsampling-极值点保护--均匀分布降采样--v50-新增)
 - [十四、windowBasedDownsamplingV4 (基于窗口的自适应降采样 V4)](#十四windowbaseddownsamplingv4-基于窗口的自适应降采样-v4)
+- [十五、calculateBalancedWeight (窗口重要性权重计算)](#十五calculatebalancedweight-窗口重要性权重计算)
 
 ---
 
@@ -3901,7 +3902,7 @@ type =SignalType.FLAT
 baseWeight =0.05*1.2=0.06
 baseWeight =Math.
 
-max(0.3,0.06) =0.3  // 触发下限保护
+max(0.3,0.06) =0.3;  // 触发下限保护
 ```
 
 **步骤 2：复杂度加成**
@@ -3931,7 +3932,7 @@ periodicityBonus =0.0  // 不是 PERIODIC 或 AMPLITUDE_MODULATED
 finalWeight =0.3+0.201+0.0+0.0=0.501
 finalWeight =Math.
 
-max(0.3,Math.min(3.0, 0.501))=0.501
+max(0.3,Math.min(3.0, 0.501))=0.501;
 ```
 
 **最终权重**：**0.501** (接近最低权重)
@@ -3962,7 +3963,7 @@ type =SignalType.PERIODIC
 baseWeight =1.8*1.2=2.16
 baseWeight =Math.
 
-max(0.3,2.16) =2.16
+max(0.3,2.16) =2.16;
 ```
 
 **步骤 2：复杂度加成**
@@ -3992,7 +3993,7 @@ periodicityBonus =0.75*0.5=0.375  // 触发周期性加成
 finalWeight =2.16+0.29+0.0+0.375=2.825
 finalWeight =Math.
 
-max(0.3,Math.min(3.0, 2.825))=2.825
+max(0.3,Math.min(3.0, 2.825))=2.825;
 ```
 
 **最终权重**：**2.825** (接近最高权重)
@@ -4023,7 +4024,7 @@ type =SignalType.STEP
 baseWeight =1.2*1.2=1.44
 baseWeight =Math.
 
-max(0.3,1.44) =1.44
+max(0.3,1.44) =1.44;
 ```
 
 **步骤 2：复杂度加成**
@@ -4053,7 +4054,7 @@ periodicityBonus =0.0  // 不是周期信号
 finalWeight =1.44+0.165+1.0+0.0=2.605
 finalWeight =Math.
 
-max(0.3,Math.min(3.0, 2.605))=2.605
+max(0.3,Math.min(3.0, 2.605))=2.605;
 ```
 
 **最终权重**：**2.605** (高权重)
@@ -4084,7 +4085,7 @@ type =SignalType.AMPLITUDE_MODULATED
 baseWeight =2.1*1.2=2.52
 baseWeight =Math.
 
-max(0.3,2.52) =2.52
+max(0.3,2.52) =2.52;
 ```
 
 **步骤 2：复杂度加成**
@@ -4114,7 +4115,7 @@ periodicityBonus =0.82*0.5=0.41  // 强周期性加成
 finalWeight =2.52+0.285+0.0+0.41=3.215
 finalWeight =Math.
 
-max(0.3,Math.min(3.0, 3.215))=3.0  // 触发上限！
+max(0.3,Math.min(3.0, 3.215))=3.0;  // 触发上限！
 ```
 
 **最终权重**：**3.0** (最高权重)
