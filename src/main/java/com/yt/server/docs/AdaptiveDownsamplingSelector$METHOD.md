@@ -3208,3 +3208,488 @@ UNIFORM_WITH_EXTREMES 优势:
 可信度"。
 
 这正是为什么在处理传感器噪声、金融波动、医疗监护等"既随机又关键"的数据时，v5.0 能显著优于传统算法的根本原因。
+
+---
+
+## 十四、windowBasedDownsamplingV4 (基于窗口的自适应降采样 V4)
+
+`com.yt.server.util.AdaptiveDownsamplingSelector#windowBasedDownsamplingV4` 是 v4.0 版本引入的核心方法，专门用于处理*
+*大规模数据**（数据量 > 基础窗口大小的 2 倍）的降采样。
+
+它的核心思想是：**将数据分成多个窗口，对每个窗口进行局部特征分析，然后根据窗口的复杂度动态分配采样配额，最后对每个窗口应用最匹配的降采样算法
+**。
+
+### 核心逻辑步骤
+
+#### 第一阶段：窗口划分与自适应窗口大小计算
+
+1. **计算自适应窗口大小**：
+   ```java
+   int adaptiveWindowSize = calculateAdaptiveWindowSize(totalPoints, targetCount);
+   ```
+    - 根据压缩比动态调整窗口大小
+    - 压缩比 < 5: 使用小窗口 (BASE_WINDOW_SIZE / 2 = 100)
+    - 压缩比 5-20: 使用标准窗口 (BASE_WINDOW_SIZE = 200)
+    - 压缩比 > 20: 使用大窗口 (BASE_WINDOW_SIZE * 2 = 400)
+
+2. **计算窗口数量**：
+   ```java
+   int numWindows = (int) Math.ceil((double) totalPoints / adaptiveWindowSize);
+   ```
+
+#### 第二阶段：窗口特征分析
+
+对每个窗口进行特征提取和信号分类：
+
+```java
+for(int i = 0;
+i<numWindows;i++){
+int start = i * adaptiveWindowSize;
+int end = Math.min(start + adaptiveWindowSize, totalPoints);
+List<UniPoint> windowData = dataPoints.subList(start, end);
+
+// 提取窗口特征
+SignalFeatures features = extractFeatures(windowData);
+
+// 分类窗口信号类型
+SignalType type = classifySignal(features);
+
+// 计算窗口权重（重要性）
+double weight = calculateBalancedWeight(type, features);
+
+// 保存结果
+allFeatures[i]=features;
+signalTypes[i]=type;
+weights[i]=weight;
+windowSizes[i]=windowData.
+
+size();
+
+totalWeightedSize +=weight *windowData.
+
+size();
+}
+```
+
+#### 第三阶段：动态点数分配
+
+根据窗口权重和大小，动态分配每个窗口的目标采样点数：
+
+```java
+int[] windowTargets = allocatePointsV4(
+        weights, windowSizes, numWindows, targetCount, totalWeightedSize);
+```
+
+**分配策略**（详见 `allocatePointsV4` 方法）：
+
+1. **基础分配**：按加权比例分配
+2. **最小密度保护**：每个窗口至少保留 2% 的点
+3. **溢出处理**：如果总数超出，按比例缩减
+4. **赤字处理**：如果总数不足，优先补充到高权重窗口
+
+#### 第四阶段：执行降采样
+
+对每个窗口应用最匹配的降采样算法：
+
+```java
+for(int i = 0;
+i<numWindows;i++){
+int start = i * adaptiveWindowSize;
+int end = Math.min(start + adaptiveWindowSize, totalPoints);
+List<UniPoint> windowData = dataPoints.subList(start, end);
+
+int windowTargetCount = windowTargets[i];
+
+// 选择算法
+DownsamplingAlgorithm algorithm = selectAlgorithm(
+        signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
+
+// 应用算法
+List<UniPoint> windowResult = applyAlgorithm(
+        algorithm, windowData, windowTargetCount, allFeatures[i]);
+
+// 去重边界点
+    if(!result.
+
+isEmpty() &&!windowResult.
+
+isEmpty()){
+        if(
+
+pointsEqual(result.get(result.size() -1),windowResult.
+
+get(0))){
+windowResult =windowResult.
+
+size() >1
+        ?windowResult.
+
+subList(1,windowResult.size())
+        :Collections.
+
+emptyList();
+        }
+                }
+
+                result.
+
+addAll(windowResult);
+}
+```
+
+### 举例说明
+
+#### 场景：电机运行监控数据
+
+假设我们有 **10000 个数据点**，需要降采样到 **500 个点**。
+
+**原始数据特征**：
+
+- 前 2000 点：平稳待机（几乎不变）
+- 中间 6000 点：剧烈震荡（电机运行）
+- 后 2000 点：缓慢下降（停机降温）
+
+---
+
+#### 步骤 1：计算自适应窗口大小
+
+```java
+// 压缩比 = 10000 / 500 = 20
+double compressionRatio = 20;
+
+// 压缩比 = 20，使用大窗口
+int adaptiveWindowSize = BASE_WINDOW_SIZE * 2 = 400;
+
+// 窗口数量 = ceil(10000 / 400) = 25
+int numWindows = 25;
+```
+
+---
+
+#### 步骤 2：窗口特征分析
+
+**窗口划分**：
+
+- Window 0-4 (前 2000 点)：平稳待机区
+- Window 5-19 (中间 6000 点)：剧烈震荡区
+- Window 20-24 (后 2000 点)：缓慢下降区
+
+**特征提取示例**（以 Window 0 为例）：
+
+```java
+// Window 0: 点 0-399（平稳区）
+List<UniPoint> window0Data = dataPoints.subList(0, 400);
+
+SignalFeatures features0 = extractFeatures(window0Data);
+// features0.normalizedVolatility ≈ 0.05 (极低)
+// features0.flatness ≈ 0.01 (几乎平坦)
+
+SignalType type0 = classifySignal(features0);
+// type0 = SignalType.FLAT
+
+double weight0 = calculateBalancedWeight(type0, features0);
+// weight0 ≈ 0.3 (最低权重，因为是平坦信号)
+```
+
+**特征提取示例**（以 Window 10 为例）：
+
+```java
+// Window 10: 点 4000-4399（震荡区）
+List<UniPoint> window10Data = dataPoints.subList(4000, 4400);
+
+SignalFeatures features10 = extractFeatures(window10Data);
+// features10.normalizedVolatility ≈ 2.5 (极高)
+// features10.periodicity ≈ 0.7 (强周期性)
+
+SignalType type10 = classifySignal(features10);
+// type10 = SignalType.PERIODIC
+
+double weight10 = calculateBalancedWeight(type10, features10);
+// weight10 ≈ 2.8 (高权重，因为是复杂周期信号)
+```
+
+**权重汇总**（简化示例）：
+
+| 窗口范围         | 信号类型     | 权重  | 窗口大小 |
+|:-------------|:---------|:----|:-----|
+| Window 0-4   | FLAT     | 0.3 | 400  |
+| Window 5-19  | PERIODIC | 2.5 | 400  |
+| Window 20-24 | LINEAR   | 0.8 | 400  |
+
+---
+
+#### 步骤 3：动态点数分配
+
+**计算总加权大小**：
+
+```java
+totalWeightedSize =(5*0.3*400)+(15*2.5*400)+(5*0.8*400)
+        =600+15000+1600
+        =17200
+```
+
+**基础分配**（Window 0 为例）：
+
+```java
+// Window 0 的基础分配
+int baseAllocation0 = (int) Math.round(500 * (0.3 * 400) / 17200);
+                    =(int)Math.
+
+round(500*120/17200)
+                    =(int)Math.
+
+round(3.49)
+                    =3
+```
+
+**基础分配**（Window 10 为例）：
+
+```java
+// Window 10 的基础分配
+int baseAllocation10 = (int) Math.round(500 * (2.5 * 400) / 17200);
+                     =(int)Math.
+
+round(500*1000/17200)
+                     =(int)Math.
+
+round(29.07)
+                     =29
+```
+
+**最小密度保护**：
+
+```java
+// 每个窗口至少保证 2% 的点
+int minPoints = Math.max(3, (int) Math.ceil(400 * 0.02));
+              =Math.
+
+max(3,8)
+              =8
+
+// Window 0 的最终分配（基础分配 3 < 最小值 8）
+windowTargets[0]=8;
+
+// Window 10 的最终分配（基础分配 29 > 最小值 8）
+windowTargets[10]=29;
+```
+
+**最终分配结果**（简化示例）：
+
+| 窗口范围         | 基础分配  | 最小保护 | 最终分配  |
+|:-------------|:------|:-----|:------|
+| Window 0-4   | 3-4   | 8    | 8     |
+| Window 5-19  | 25-35 | 8    | 25-35 |
+| Window 20-24 | 5-6   | 8    | 8     |
+
+**总分配验证**：
+
+```
+总分配 ≈ (5 * 8) + (15 * 30) + (5 * 8) = 40 + 450 + 40 = 530
+```
+
+如果超出目标 500，会在第三轮（溢出处理）中从高配额窗口中减少 30 个点。
+
+---
+
+#### 步骤 4：执行降采样
+
+**Window 0 (平稳区) 的处理**：
+
+```java
+// Window 0 数据
+List<UniPoint> window0Data = dataPoints.subList(0, 400);
+int window0Target = 8;
+
+// 信号类型：FLAT
+SignalType type0 = SignalType.FLAT;
+
+// 选择算法
+DownsamplingAlgorithm algorithm0 = selectAlgorithm(type0, features0, 400, 8);
+// algorithm0 = DownsamplingAlgorithm.KEEP_FIRST_LAST
+
+// 应用算法（仅保留首尾）
+List<UniPoint> window0Result = applyAlgorithm(algorithm0, window0Data, 8, features0);
+// window0Result.size() = 2
+
+// ⚠️ 注意：实际会被 normalizeToTargetV4 补充到 8 个点
+```
+
+**Window 10 (震荡区) 的处理**：
+
+```java
+// Window 10 数据
+List<UniPoint> window10Data = dataPoints.subList(4000, 4400);
+int window10Target = 29;
+
+// 信号类型：PERIODIC
+SignalType type10 = SignalType.PERIODIC;
+
+// 选择算法
+DownsamplingAlgorithm algorithm10 = selectAlgorithm(type10, features10, 400, 29);
+// algorithm10 = DownsamplingAlgorithm.HYBRID_ENVELOPE
+
+// 应用算法（混合包络）
+List<UniPoint> window10Result = applyAlgorithm(algorithm10, window10Data, 29, features10);
+// window10Result.size() ≈ 29
+
+// 包含：
+// - 约 12 个包络点（40% 配额，保留峰谷）
+// - 约 9 个中心带点（30% 配额，保留平均趋势）
+// - 约 8 个填充点（30% 配额，补充细节）
+```
+
+**Window 20 (下降区) 的处理**：
+
+```java
+// Window 20 数据
+List<UniPoint> window20Data = dataPoints.subList(8000, 8400);
+int window20Target = 8;
+
+// 信号类型：LINEAR
+SignalType type20 = SignalType.LINEAR;
+
+// 选择算法
+DownsamplingAlgorithm algorithm20 = selectAlgorithm(type20, features20, 400, 8);
+// algorithm20 = DownsamplingAlgorithm.LTTB
+
+// 应用算法
+List<UniPoint> window20Result = applyAlgorithm(algorithm20, window20Data, 8, features20);
+// window20Result.size() = 8
+```
+
+---
+
+### 关键优势
+
+1. **资源高效分配**：
+    - 平稳区（Window 0-4）：仅用 40 个点（8%）
+    - 震荡区（Window 5-19）：使用 420 个点（84%）
+    - 下降区（Window 20-24）：使用 40 个点（8%）
+
+2. **算法自动匹配**：
+    - 平稳区自动使用 `KEEP_FIRST_LAST`（极致压缩）
+    - 震荡区自动使用 `HYBRID_ENVELOPE`（保留完整波形）
+    - 下降区自动使用 `LTTB`（保持趋势线性）
+
+3. **视觉效果优异**：
+    - 平稳区：一条直线（符合实际）
+    - 震荡区：完整的包络带（保留所有峰谷）
+    - 下降区：平滑的斜线（趋势清晰）
+
+---
+
+### 与传统算法的对比
+
+#### 如果使用单一的 LTTB 算法（10000 点 → 500 点）：
+
+```java
+// 传统方法：平均分配
+List<UniPoint> result = LTThreeBuckets.sorted(dataPoints, 500);
+```
+
+**问题**：
+
+- 平稳区浪费了约 100 个点（本可压缩到 10 个点）
+- 震荡区仅分配到约 300 个点（不足以保留完整波形）
+- 视觉效果：震荡区出现条纹和混叠
+
+#### 使用 windowBasedDownsamplingV4：
+
+```java
+// v4.0 方法：智能分配
+List<UniPoint> result = windowBasedDownsamplingV4(dataPoints, 500);
+```
+
+**优势**：
+
+- 平稳区仅用 40 个点（节省 60 个点）
+- 震荡区获得 420 个点（增加 120 个点）
+- 视觉效果：震荡区波形完整，无条纹
+
+---
+
+### 适用场景
+
+1. **大规模数据**：数据量 > 400 点且压缩比 > 2
+2. **混合信号**：包含平稳区和剧烈波动区
+3. **可视化优先**：需要在前端图表上精确展示波形特征
+4. **高压缩比**：压缩比 > 10 时效果最佳
+
+---
+
+### 代码对应
+
+```java
+private static List<UniPoint> windowBasedDownsamplingV4(
+        List<UniPoint> dataPoints, int targetCount) {
+
+    // 1️⃣ 计算自适应窗口大小
+    int adaptiveWindowSize = calculateAdaptiveWindowSize(
+            dataPoints.size(), targetCount);
+    int numWindows = (int) Math.ceil((double) dataPoints.size() / adaptiveWindowSize);
+
+    // 2️⃣ 分析所有窗口
+    double[] weights = new double[numWindows];
+    SignalType[] signalTypes = new SignalType[numWindows];
+    SignalFeatures[] allFeatures = new SignalFeatures[numWindows];
+    int[] windowSizes = new int[numWindows];
+    double totalWeightedSize = 0;
+
+    for (int i = 0; i < numWindows; i++) {
+        int start = i * adaptiveWindowSize;
+        int end = Math.min(start + adaptiveWindowSize, dataPoints.size());
+        List<UniPoint> windowData = dataPoints.subList(start, end);
+
+        if (windowData.isEmpty()) continue;
+
+        windowSizes[i] = windowData.size();
+        SignalFeatures features = extractFeatures(windowData);
+        SignalType type = classifySignal(features);
+        double weight = calculateBalancedWeight(type, features);
+
+        allFeatures[i] = features;
+        signalTypes[i] = type;
+        weights[i] = weight;
+        totalWeightedSize += weight * windowData.size();
+    }
+
+    // 3️⃣ 动态分配点数
+    int[] windowTargets = allocatePointsV4(
+            weights, windowSizes, numWindows, targetCount, totalWeightedSize);
+
+    // 4️⃣ 执行降采样
+    List<UniPoint> result = new ArrayList<>(targetCount);
+
+    for (int i = 0; i < numWindows; i++) {
+        int start = i * adaptiveWindowSize;
+        int end = Math.min(start + adaptiveWindowSize, dataPoints.size());
+        List<UniPoint> windowData = dataPoints.subList(start, end);
+
+        if (windowData.isEmpty()) continue;
+
+        int windowTargetCount = windowTargets[i];
+
+        DownsamplingAlgorithm algorithm = selectAlgorithm(
+                signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
+
+        List<UniPoint> windowResult = applyAlgorithm(
+                algorithm, windowData, windowTargetCount, allFeatures[i]);
+
+        // 去重边界点
+        if (!result.isEmpty() && !windowResult.isEmpty()) {
+            if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
+                windowResult = windowResult.size() > 1
+                        ? windowResult.subList(1, windowResult.size())
+                        : Collections.emptyList();
+            }
+        }
+
+        result.addAll(windowResult);
+    }
+
+    return result;
+}
+```
+
+---
+
