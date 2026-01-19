@@ -1,6 +1,5 @@
 package com.yt.server.service;
 
-
 import com.alibaba.fastjson.JSONObject;
 import com.yt.server.entity.*;
 import com.yt.server.mapper.TableNumInfoMapper;
@@ -11,6 +10,7 @@ import com.yt.server.util.AdaptiveDownsamplingSelector;
 import com.yt.server.util.BaseUtils;
 import com.yt.server.util.MysqlUtils;
 import com.yt.server.util.VarConst;
+import jakarta.annotation.PreDestroy;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.map.MultiValueMap;
 import org.apache.commons.lang3.StringUtils;
@@ -32,7 +32,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static com.yt.server.util.BaseUtils.*;
-
 
 @Service
 public class IoComposeServiceDatabase {
@@ -60,19 +59,17 @@ public class IoComposeServiceDatabase {
     @Autowired
     private HandleWasteTimeService handleWasteTimeService;
 
-
     public static final int lagNum = 3000;
 
-    //16384减去首位2个固定桶
+    // 16384减去首位2个固定桶
     public static final int DOWNSAMPLING_BATCH = 4096;
-
 
     final Object lock = new Object();
 
     public static final String DOMAIN_PREFIX = "com.yt.server.entity.";
 
-    public static final String[] DEFAULT_TABLE = new String[]{"table_num_info", "trace_field_meta", "trace_table_related_info", "trace_timestamp_statistics"};
-
+    public static final String[] DEFAULT_TABLE = new String[]{"table_num_info", "trace_field_meta",
+            "trace_table_related_info", "trace_timestamp_statistics"};
 
     public static final String DATABASE_NAME = "trace";
 
@@ -84,15 +81,20 @@ public class IoComposeServiceDatabase {
 
     private static final Integer CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
 
-
-    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60, TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
+    private final ThreadPoolExecutor pool = new ThreadPoolExecutor(
+            CORE_POOL_SIZE,
+            CORE_POOL_SIZE * 2,
+            60, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(1000),
+            new ThreadPoolExecutor.CallerRunsPolicy() // 反压策略：队列满时由调用线程执行
+    );
 
     {
         backUpTableList.addAll(Arrays.asList(DEFAULT_TABLE));
-//        downsamplingRate.add(2);
-//        downsamplingRate.add(4);
-//        downsamplingRate.add(8);
-//        downsamplingRate.add(16);
+        // downsamplingRate.add(2);
+        // downsamplingRate.add(4);
+        // downsamplingRate.add(8);
+        // downsamplingRate.add(16);
     }
 
     public static Integer[] data = new Integer[]{4, 8, 32, 64, 128, 256, 512};
@@ -109,7 +111,7 @@ public class IoComposeServiceDatabase {
 
     public static final Integer firstPoint = 400000;
 
-    //大于2000000条数据就512倍降采样
+    // 大于2000000条数据就512倍降采样
     public static final Integer highPoint = 2000000;
 
     public static final Integer fullDataReqNum = 2000;
@@ -117,6 +119,19 @@ public class IoComposeServiceDatabase {
     ReentrantLock reentrantLock = new ReentrantLock();
 
     private static final Integer defaultPer = 1000;
+
+    @PreDestroy
+    public void shutdownPool() {
+        pool.shutdown();
+        try {
+            if (!pool.awaitTermination(30, TimeUnit.SECONDS)) {
+                pool.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            pool.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
 
     public VsCodeRespVo traceCreate(VsCodeReqParam vsCodeReqParam) {
         Long requestId = vsCodeReqParam.getRequestId();
@@ -156,7 +171,7 @@ public class IoComposeServiceDatabase {
             responseVo.setRet(false);
             logger.error("trace create 异常,报错信息为: " + e);
             e.printStackTrace();
-            //   rollbackShardingTable().accept(tableName);
+            // rollbackShardingTable().accept(tableName);
             return responseVo;
         }
         responseVo.setRet(true);
@@ -189,11 +204,11 @@ public class IoComposeServiceDatabase {
                     String per = String.valueOf(jsonObject.get(key));
                     if (perMap.size() == 0) {
                         perMap.put("per", Integer.valueOf(per));
-//                        writeTimestampToD2(String.valueOf(perMap.get("per")));
+                        // writeTimestampToD2(String.valueOf(perMap.get("per")));
                     } else {
                         perMap.clear();
                         perMap.put("per", Integer.valueOf(per));
-//                        writeTimestampToD2(String.valueOf(perMap.get("per")));
+                        // writeTimestampToD2(String.valueOf(perMap.get("per")));
                     }
                     continue;
                 }
@@ -241,9 +256,11 @@ public class IoComposeServiceDatabase {
                 downsamplingTableName = tableName.concat("_downsampling");
             } else {
                 String oldFieldMetaIds = traceTableRelatedInfo.getOldFieldMetaIds();
-                handleWasteTimeService.handleHistoryDownSamplingData(tableName, traceTableRelatedInfo, jdbcTemplate, traceId, oldFieldMetaIds);
+                handleWasteTimeService.handleHistoryDownSamplingData(tableName, traceTableRelatedInfo, jdbcTemplate,
+                        traceId, oldFieldMetaIds);
             }
-            //不为空的话就是调用了很多次start了,此时异步删除之前的全量表和降采样表还没完成，直接使用以前的tableName会报错cannot create table xxx ,exist table xxx,所以需要tableName加1，并且更新table_releated_info表
+            // 不为空的话就是调用了很多次start了,此时异步删除之前的全量表和降采样表还没完成，直接使用以前的tableName会报错cannot create
+            // table xxx ,exist table xxx,所以需要tableName加1，并且更新table_releated_info表
             if (StringUtils.isNotEmpty(tempTableName)) {
                 tableName = "trace".concat(String.valueOf(originalTableNumInfo.getTableSeqNum() + 1));
                 downsamplingTableName = tableName.concat("_downsampling");
@@ -259,22 +276,26 @@ public class IoComposeServiceDatabase {
             traceFieldMetaMapper.insertBatch(traceFieldMetaList);
             List<Long> oldIdLists = traceFieldMetaList.stream().map(TraceFieldMeta::getId).toList();
             String oldFieldMetaIds = StringUtils.join(oldIdLists, ",");
-            //创建对应trace表
+            // 创建对应trace表
             StringBuilder sql = new StringBuilder();
             sql.append(" CREATE TABLE " + "`").append(tableName).append("`").append("(");
             sql.append("`id` bigint NOT NULL,");
-            //earn int  age  tinyint
+            // earn int age tinyint
             for (int i = 0; i < traceFieldMetaList.size(); i++) {
                 if (i == traceFieldMetaList.size() - 1) {
-                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ").append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, PRIMARY KEY (`id`))ENGINE=InnoDB ");
+                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ")
+                            .append(traceFieldMetaList.get(i).getMysqlType())
+                            .append(" DEFAULT NULL, PRIMARY KEY (`id`))ENGINE=InnoDB ");
                 } else {
-                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ").append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, ");
+                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ")
+                            .append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, ");
                 }
             }
             String sqlStr = sql.toString();
             jdbcTemplate.execute(sqlStr);
             generateShardingTable(tableName, traceFieldMetaList, traceId);
-            handleWasteTimeService.handleDownSamplingBusiness(traceFieldMetaList, pool, jdbcTemplate, downsamplingTableName);
+            handleWasteTimeService.handleDownSamplingBusiness(traceFieldMetaList, pool, jdbcTemplate,
+                    downsamplingTableName);
             traceTableRelatedInfo.setTraceConfig(traceConfig);
             traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
             traceTableRelatedInfo.setTableName(tableName);
@@ -283,11 +304,12 @@ public class IoComposeServiceDatabase {
             traceTableRelatedInfo.setOldFieldMetaIds(oldFieldMetaIds);
             traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
             if (StringUtils.isNotEmpty(tempTableName)) {
-                //此时numInfo表不可能为空，所以不需要判断  因为上面的start方法如果被多次调用的话
+                // 此时numInfo表不可能为空，所以不需要判断 因为上面的start方法如果被多次调用的话
                 Integer seqNum = originalTableNumInfo.getTableSeqNum();
                 originalTableNumInfo.setTableSeqNum(seqNum + 1);
                 tableNumInfoMapper.updateByPrimaryKey(originalTableNumInfo);
-                //比如trace stop的时候traceTimestampStatistics之前表里的offset并没有清除，所以需要删除之前那条数据，重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
+                // 比如trace
+                // stop的时候traceTimestampStatistics之前表里的offset并没有清除，所以需要删除之前那条数据，重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
                 traceTimestampStatisticsMapper.deleteByPrimaryKey(traceId);
             }
             responseVo.setResponseId(requestId);
@@ -350,13 +372,14 @@ public class IoComposeServiceDatabase {
                     break;
                 }
             }
-            //删除主表和降采样表
+            // 删除主表和降采样表
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             final String traceStatus = traceTableRelatedInfo.getTraceStatus();
-//            if (!"traceStop".equalsIgnoreCase(traceStatus)) {
-//                responseVo.setRet(false);
-//                throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能执行删除操作!,traceId= " + traceId);
-//            }
+            // if (!"traceStop".equalsIgnoreCase(traceStatus)) {
+            // responseVo.setRet(false);
+            // throw new RuntimeException("当前trace状态为【" + traceStatus +
+            // "】,不是stop状态不能执行删除操作!,traceId= " + traceId);
+            // }
             String tableName = traceTableRelatedInfo.getTableName();
             if (StringUtils.isNotEmpty(tableName)) {
                 String sql = "drop table " + tableName;
@@ -368,7 +391,8 @@ public class IoComposeServiceDatabase {
             if (CollectionUtils.isNotEmpty(traceFieldMetaList)) {
                 for (TraceFieldMeta traceFieldMeta : traceFieldMetaList) {
                     for (Integer downRate : data) {
-                        String downsamplingSql = "drop table " + downsamplingTableName.concat("_").concat(traceFieldMeta.getVarName()).concat("_").concat(String.valueOf(downRate));
+                        String downsamplingSql = "drop table " + downsamplingTableName.concat("_")
+                                .concat(traceFieldMeta.getVarName()).concat("_").concat(String.valueOf(downRate));
                         jdbcTemplate.update(downsamplingSql);
                     }
                 }
@@ -389,7 +413,6 @@ public class IoComposeServiceDatabase {
         return responseVo;
     }
 
-
     public static List<Object[]> convertPojoList2ObjListArr(List<UniPoint> singleVarDataList, int size) {
         List<Object[]> objects = new ArrayList<>();
         for (UniPoint uniPoint : singleVarDataList) {
@@ -403,7 +426,8 @@ public class IoComposeServiceDatabase {
     }
 
     public MultiValueMap getFileHandleExecutor(RequestParameter vsCodeReqParam) throws Exception {
-        //System.out.println("getFileHandleExecutor=" + Thread.currentThread().getName());
+        // System.out.println("getFileHandleExecutor=" +
+        // Thread.currentThread().getName());
         Long reqStartTimestamp = vsCodeReqParam.getStartTimestamp();
         Long reqEndTimestamp = vsCodeReqParam.getEndTimestamp();
         if (reqStartTimestamp == null) {
@@ -432,7 +456,7 @@ public class IoComposeServiceDatabase {
         } else if (originalVarList.size() > 15) {
             traceRule = new LastHigherLineRule();
         }
-//        Integer reqNum = traceRule.getReqNum();
+        // Integer reqNum = traceRule.getReqNum();
         int reqNum = 8000;
         if (originalVarList.size() > 5 && originalVarList.size() <= 10) {
             reqNum = 5000;
@@ -453,18 +477,22 @@ public class IoComposeServiceDatabase {
         final String currentTraceTableName = traceTableRelatedInfo.getTableName();
         final String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
         if (StringUtils.isNotEmpty(currentTraceTableName)) {
-            return parseLiveData(reqStartTimestamp, reqEndTimestamp, reqNum, downsamplingTableName, currentTraceTableName, filterVarList, mapList);
+            return parseLiveData(reqStartTimestamp, reqEndTimestamp, reqNum, downsamplingTableName,
+                    currentTraceTableName, filterVarList, mapList);
         } else {
             throw new RuntimeException("查询原始表失败");
         }
     }
 
-
-    private MultiValueMap parseLiveData(Long reqStartTimestamp, Long reqEndTimestamp, Integer reqNum, String downsamplingTableName, String currentTableName, List<String> filterVarList, List<Map<String, String>> mapList) throws ClassNotFoundException, NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
+    private MultiValueMap parseLiveData(Long reqStartTimestamp, Long reqEndTimestamp, Integer reqNum,
+                                        String downsamplingTableName, String currentTableName, List<String> filterVarList,
+                                        List<Map<String, String>> mapList) throws ClassNotFoundException, NoSuchFieldException,
+            IllegalAccessException, ExecutionException, InterruptedException {
         final MultiValueMap allMultiValueMap = new MultiValueMap();
         try {
             String fieldName = StringUtils.join(filterVarList, ",");
-            //writeTimestampToD4(String.valueOf(getConfigPer()), reqStartTimestamp, reqEndTimestamp);
+            // writeTimestampToD4(String.valueOf(getConfigPer()), reqStartTimestamp,
+            // reqEndTimestamp);
             reqStartTimestamp = getMinValue(reqStartTimestamp, getConfigPer());
             final Set<String> queryTableList = getQueryTable(reqStartTimestamp, reqEndTimestamp, currentTableName);
             if (reqEndTimestamp >= (long) totalSize * getConfigPer()) {
@@ -472,68 +500,80 @@ public class IoComposeServiceDatabase {
             }
             int originalNum = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer());
             if (originalNum != 0) {
-                //原始数据小于请求数据，所以都返回
+                // 原始数据小于请求数据，所以都返回
                 if (originalNum <= reqNum) {
-                    //writeTimestampToD3("query from full table,originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
-                    return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
+                    // writeTimestampToD3("query from full table,originalNum=" + originalNum +
+                    // ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
+                    return handleFromFull(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList,
+                            allMultiValueMap, fieldName, queryTableList);
                 }
-                int originalDownTableSuffix = Math.toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer() / reqNum);
+                int originalDownTableSuffix = Math
+                        .toIntExact((reqEndTimestamp - reqStartTimestamp) / getConfigPer() / reqNum);
                 int closestRate = getClosestRate(originalDownTableSuffix);
                 if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() >= firstPoint) {
                     String downTableSuffix = String.valueOf(closestRate);
-                    //比如 x/512/6000>1 x约等于3000000
-//                    if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() > highPoint) {
-//                        downTableSuffix = otherDownTableSuffix;
-//                    }
+                    // 比如 x/512/6000>1 x约等于3000000
+                    // if ((reqEndTimestamp - reqStartTimestamp) / getConfigPer() > highPoint) {
+                    // downTableSuffix = otherDownTableSuffix;
+                    // }
                     // int closestRate = 8;
-                    Set<Future<List<UniPoint>>> resultList = new HashSet<>();
-                    CountDownLatch countDownLatch = new CountDownLatch(filterVarList.size());
+                    List<Future<List<UniPoint>>> resultList = new ArrayList<>();
                     List<UniPoint> allUniPointList = new ArrayList<>();
                     for (String varName : filterVarList) {
-                        Future<List<UniPoint>> future = pool.submit(new BigDataDownsamplingTableHandler(downsamplingTableName.concat("_").concat(varName).concat("_").concat(downTableSuffix), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, mapList));
+                        Future<List<UniPoint>> future = pool.submit(new BigDataDownsamplingTableHandler(
+                                downsamplingTableName.concat("_").concat(varName).concat("_").concat(downTableSuffix),
+                                reqStartTimestamp, reqEndTimestamp, jdbcTemplate, varName, mapList));
                         resultList.add(future);
                     }
-                    countDownLatch.await();
                     for (Future<List<UniPoint>> future : resultList) {
                         allUniPointList.addAll(future.get());
                     }
-                    final Map<String, List<UniPoint>> map = allUniPointList.stream().collect(Collectors.groupingBy(UniPoint::getVarName));
+                    final Map<String, List<UniPoint>> map = allUniPointList.stream()
+                            .collect(Collectors.groupingBy(UniPoint::getVarName));
                     int gap = -1;
                     for (Map.Entry<String, List<UniPoint>> entry : map.entrySet()) {
                         List<UniPoint> uniPointList = entry.getValue();
-                        //float f = (float) uniPointList.size() / (float) reqNum;
-                        //  gap = Math.round(f);
+                        // float f = (float) uniPointList.size() / (float) reqNum;
+                        // gap = Math.round(f);
                         gap = uniPointList.size() / reqNum;
                         if (gap >= 1) {
-                            //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
-                            uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                            // writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" +
+                            // uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
+                            uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum,
+                                    AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
                         } else if (gap == 0) {
-                            //logger.info("gap = 0,uniPointList大小为:{}", uniPointList.size());
-                            //writeTimestampToD3("gap=0,downTableSuffix=" + downTableSuffix + ",uniPointList大小为:" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
+                            // logger.info("gap = 0,uniPointList大小为:{}", uniPointList.size());
+                            // writeTimestampToD3("gap=0,downTableSuffix=" + downTableSuffix +
+                            // ",uniPointList大小为:" + uniPointList.size(), reqStartTimestamp,
+                            // reqEndTimestamp);
                             MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                             allMultiValueMap.putAll(multiValueMap);
                         }
                     }
-                    handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), Integer.parseInt(downTableSuffix), filterVarList);
-                    //writeTimestampToD3("gap="+gap+",downTableSuffix="+downTableSuffix+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
-                    //writeTimestampToD3("大数据量当前使用了" + downTableSuffix + "降采样", reqStartTimestamp, reqEndTimestamp);
+                    handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName,
+                            allMultiValueMap, getConfigPer(), Integer.parseInt(downTableSuffix), filterVarList);
+                    // writeTimestampToD3("gap="+gap+",downTableSuffix="+downTableSuffix+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
+                    // writeTimestampToD3("大数据量当前使用了" + downTableSuffix + "降采样", reqStartTimestamp,
+                    // reqEndTimestamp);
                     return allMultiValueMap;
                 }
-                //writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum, reqStartTimestamp, reqEndTimestamp);
-                Set<Future<List<UniPoint>>> resultList = new HashSet<>();
-                CountDownLatch countDownLatch = new CountDownLatch(filterVarList.size());
+                // writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum,
+                // reqStartTimestamp, reqEndTimestamp);
+                List<Future<List<UniPoint>>> resultList = new ArrayList<>();
                 List<UniPoint> allUniPointList = new ArrayList<>();
                 for (String varName : filterVarList) {
-                    Future<List<UniPoint>> future = pool.submit(new QueryEachDownsamplingTableHandler(downsamplingTableName.concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, varName, closestRate, shardNum, mapList));
+                    Future<List<UniPoint>> future = pool.submit(new QueryEachDownsamplingTableHandler(
+                            downsamplingTableName.concat("_").concat(varName), reqStartTimestamp, reqEndTimestamp,
+                            jdbcTemplate, varName, closestRate, shardNum, mapList));
                     resultList.add(future);
                 }
-                countDownLatch.await();
                 for (Future<List<UniPoint>> future : resultList) {
                     allUniPointList.addAll(future.get());
                 }
-                final Map<String, List<UniPoint>> map = allUniPointList.stream().collect(Collectors.groupingBy(UniPoint::getVarName));
+                final Map<String, List<UniPoint>> map = allUniPointList.stream()
+                        .collect(Collectors.groupingBy(UniPoint::getVarName));
                 for (Map.Entry<String, List<UniPoint>> entry : map.entrySet()) {
                     List<UniPoint> uniPointList = entry.getValue();
                     float innerF = (float) uniPointList.size() / (float) reqNum;
@@ -541,8 +581,10 @@ public class IoComposeServiceDatabase {
                     innerGap = uniPointList.size() / reqNum;
                     String downTableSuffix = String.valueOf(closestRate);
                     if (innerGap >= 1) {
-                        //writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" + uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
-                        uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                        // writeTimestampToD3("gap>0,此时gap=" + gap + ",uniPointList.size=" +
+                        // uniPointList.size(), reqStartTimestamp, reqEndTimestamp);
+                        uniPointList = AdaptiveDownsamplingSelector.downsample(uniPointList, reqNum,
+                                AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                         MultiValueMap multiValueMap = uniPoint2Map(uniPointList, mapList);
                         allMultiValueMap.putAll(multiValueMap);
                     } else if (innerGap == 0) {
@@ -550,29 +592,32 @@ public class IoComposeServiceDatabase {
                         allMultiValueMap.putAll(multiValueMap);
                     }
                 }
-                handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer(), closestRate, filterVarList);
+                handleDownTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName,
+                        allMultiValueMap, getConfigPer(), closestRate, filterVarList);
                 if ((reqEndTimestamp - reqStartTimestamp) % closestRate != 0 || reqEndTimestamp % getConfigPer() != 0) {
                 }
-                //实时数据请求的时候所有变量最新的数据还没有插入降采样表，因此所有变量都从全量表查询，同时数据小于3000才去全量表差，要不然前端渲染有压力
-//                    if ((reqEndTimestamp - threadLastValue) / perMap.get("per") <= lagNum) {
-//                        handleFromFull(threadLastValue, reqEndTimestamp, currentTableName, mapList, allMultiValueMap, fieldName, queryTableList);
-//                    }
-                //writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")), reqStartTimestamp, reqEndTimestamp);
+                // 实时数据请求的时候所有变量最新的数据还没有插入降采样表，因此所有变量都从全量表查询，同时数据小于3000才去全量表差，要不然前端渲染有压力
+                // if ((reqEndTimestamp - threadLastValue) / perMap.get("per") <= lagNum) {
+                // handleFromFull(threadLastValue, reqEndTimestamp, currentTableName, mapList,
+                // allMultiValueMap, fieldName, queryTableList);
+                // }
+                // writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")),
+                // reqStartTimestamp, reqEndTimestamp);
                 return allMultiValueMap;
 
             }
             return new MultiValueMap();
         } finally {
-//            Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
-//            if (!entrySet.isEmpty()) {
-//                List list = (List) entrySet.iterator().next().getValue();
-//                if (list.size() > traceRule.getReqNum()) {
-//                    handleWasteTimeService.handleGc();
-//                }
-//            }
+            // Set<Map.Entry<BigDecimal, BigDecimal>> entrySet =
+            // allMultiValueMap.entrySet();
+            // if (!entrySet.isEmpty()) {
+            // List list = (List) entrySet.iterator().next().getValue();
+            // if (list.size() > traceRule.getReqNum()) {
+            // handleWasteTimeService.handleGc();
+            // }
+            // }
         }
     }
-
 
     private List<Pair<String, BigDecimal[]>> handleLagDownsampling(Set<Map.Entry<BigDecimal, BigDecimal>> entrySet) {
         List<Pair<String, BigDecimal[]>> lagList = new ArrayList<>();
@@ -587,7 +632,8 @@ public class IoComposeServiceDatabase {
             if (CollectionUtils.isNotEmpty(valueList)) {
                 if (valueList.size() < size) {
                     String originalVarName = String.valueOf(entry.getKey());
-                    Pair<String, BigDecimal[]> pair = Pair.of(erasePoint(originalVarName), (BigDecimal[]) valueList.get(valueList.size() - 1));
+                    Pair<String, BigDecimal[]> pair = Pair.of(erasePoint(originalVarName),
+                            (BigDecimal[]) valueList.get(valueList.size() - 1));
                     lagList.add(pair);
                 }
             }
@@ -595,32 +641,37 @@ public class IoComposeServiceDatabase {
         return lagList;
     }
 
-    private MultiValueMap handleFromFull(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName, List<Map<String, String>> mapList, MultiValueMap allMultiValueMap, String fieldName, Set<String> queryTableList) throws InterruptedException, ExecutionException, NoSuchFieldException, IllegalAccessException {
-        //查询原表
+    private MultiValueMap handleFromFull(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
+                                         List<Map<String, String>> mapList, MultiValueMap allMultiValueMap, String fieldName,
+                                         Set<String> queryTableList)
+            throws InterruptedException, ExecutionException, NoSuchFieldException, IllegalAccessException {
+        // 查询原表
         List<Future<MultiValueMap>> resultList = new ArrayList<>();
-        CountDownLatch countDownLatch = new CountDownLatch(queryTableList.size());
         for (String s : queryTableList) {
-            Future<MultiValueMap> future = pool.submit(new QueryFullTableHandler(s, reqStartTimestamp, reqEndTimestamp, jdbcTemplate, countDownLatch, fieldName, mapList));
+            Future<MultiValueMap> future = pool.submit(new QueryFullTableHandler(s, reqStartTimestamp, reqEndTimestamp,
+                    jdbcTemplate, fieldName, mapList));
             resultList.add(future);
         }
-        countDownLatch.await();
         for (Future<MultiValueMap> future : resultList) {
             allMultiValueMap.putAll(future.get());
         }
-        //54-142  per=10  downrate=16  50 66 82 98 114 130 131-142再次降采样
+        // 54-142 per=10 downrate=16 50 66 82 98 114 130 131-142再次降采样
         if (reqEndTimestamp % getConfigPer() != 0) {
-            handleFullTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, getConfigPer());
+            handleFullTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName,
+                    allMultiValueMap, getConfigPer());
         }
         return allMultiValueMap;
     }
 
-    private void handleDownTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName,
-                                    MultiValueMap allMultiValueMap, int per, int closestRate, List<String> filterVarList) throws NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
+    private void handleDownTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
+                                    List<Map<String, String>> mapList, String fieldName,
+                                    MultiValueMap allMultiValueMap, int per, int closestRate, List<String> filterVarList)
+            throws NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
         Long beginLeftStartTimestamp = null;
         Long endLeftStartTimestamp = null;
         final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
         for (Map.Entry<BigDecimal, BigDecimal> entry : entrySet) {
-            //循环每一个变量，因为每一个变量最后和最开始的值可能不一样
+            // 循环每一个变量，因为每一个变量最后和最开始的值可能不一样
             String varName = String.valueOf(entry.getKey());
             List valueList = (List) entry.getValue();
             BigDecimal[] startBd = (BigDecimal[]) valueList.get(0);
@@ -630,106 +681,132 @@ public class IoComposeServiceDatabase {
              * 不需要处理的情况:但是需要判断假如前面的处理第一条数据返回117850,起始点是117843，此时小于一个per，不需要处理了
              */
             long threadStartValue = startBd[0].longValue();
-            //logger.info("varName:{},whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}", varName, whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per), threadStartValue, reqStartTimestamp, per);
-            if (threadStartValue > reqStartTimestamp && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
+            // logger.info("varName:{},whetherNeedHandleHeadData:{},threadStartValue:{},reqStartTimestamp:{},per:{}",
+            // varName, whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per),
+            // threadStartValue, reqStartTimestamp, per);
+            if (threadStartValue > reqStartTimestamp
+                    && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
                 beginLeftStartTimestamp = threadStartValue;
             }
             BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 1);
             final long threadLastValue = endBd[0].longValue();
-            //最后那条数据如果等于结束值，就不用下面的查询剩余数据了
+            // 最后那条数据如果等于结束值，就不用下面的查询剩余数据了
             if (threadLastValue != reqEndTimestamp) {
                 endLeftStartTimestamp = threadLastValue + 1;
             }
             if (beginLeftStartTimestamp != null) {
-                logger.info("reqStartTimestamp={}，beginLeftStartTimestamp={},varName={}", reqStartTimestamp, beginLeftStartTimestamp, varName);
-                handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, varName);
+                logger.info("reqStartTimestamp={}，beginLeftStartTimestamp={},varName={}", reqStartTimestamp,
+                        beginLeftStartTimestamp, varName);
+                handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList,
+                        fieldName, allMultiValueMap, closestRate, varName);
             }
             if (endLeftStartTimestamp != null) {
-                logger.info("endLeftStartTimestamp={},reqEndTimestamp={},varName={}", endLeftStartTimestamp, reqEndTimestamp, varName);
-                handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, varName);
+                logger.info("endLeftStartTimestamp={},reqEndTimestamp={},varName={}", endLeftStartTimestamp,
+                        reqEndTimestamp, varName);
+                handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName,
+                        allMultiValueMap, closestRate, varName);
             }
             // break;
         }
 
     }
 
-    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, String varName) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
+    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName,
+                                          List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate,
+                                          String varName)
+            throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
         /**
          * 小于一个任务周期就没必要请求了,但是注意
-         *  endLeftStartTimestamp前面会加1，所以不准确，不加1会丢失如下这个点423836000
-         *  e.g endLeftStartTimestamp=423835001,reqEndTimestamp=423836000,varName=TESTORIGINAL.a2,周期getConfigPer()是1000(1ms)
-         *  所以还得加回来那个1再次和一个周期对比
+         * endLeftStartTimestamp前面会加1，所以不准确，不加1会丢失如下这个点423836000
+         * e.g
+         * endLeftStartTimestamp=423835001,reqEndTimestamp=423836000,varName=TESTORIGINAL.a2,周期getConfigPer()是1000(1ms)
+         * 所以还得加回来那个1再次和一个周期对比
          */
         if (endTimestamp - startTimestamp + 1 < getConfigPer()) {
             return;
         }
         Set<String> queryTable = getQueryTable(startTimestamp, endTimestamp, currentTableName);
-        CountDownLatch lagCountDownLatch = new CountDownLatch(queryTable.size());
         List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
         List<UniPoint> lagUniPointList = new ArrayList<>();
         for (String table : queryTable) {
-            Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, startTimestamp, endTimestamp, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
+            Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, startTimestamp, endTimestamp,
+                    jdbcTemplate, fieldName, mapList));
             lagResultList.add(future);
         }
-        lagCountDownLatch.await();
         for (Future<List<UniPoint>> future : lagResultList) {
             lagUniPointList.addAll(future.get());
         }
-        //uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
+        // uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
         // for (String varName : filterVarList) {
-        //logger.info("lagUniPointList:{},varName={}", lagUniPointList.get(0).getVarName(), varName);
-        List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> erasePoint(varName).equals(item.getVarName())).toList();
+        // logger.info("lagUniPointList:{},varName={}",
+        // lagUniPointList.get(0).getVarName(), varName);
+        List<UniPoint> singleVarDataList = lagUniPointList.stream()
+                .filter(item -> erasePoint(varName).equals(item.getVarName())).toList();
         int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
         Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
-        //logger.info("singleVarDataList_more:{}", singleVarDataList);
+        // logger.info("singleVarDataList_more:{}", singleVarDataList);
         logger.info("closestRate_lag:{}", closestRate);
         /**
          * 最少保证返回2个点，要不太少了 如下的Math.max(xx,2);
          */
         if (customDownsamplingRule == 1) {
-            //自定义规则
+            // 自定义规则
             customDownsamplingRule = closestRate / 2;
         }
         if (bucketSize > 0) {
             logger.info("singleVarDataList.size(){bucketSize>0}:{}", singleVarDataList.size());
             if (singleVarDataList.size() < 50) {
-                //降一级采样,比如之前closestRate是32，那么使用customDownsamplingRule就是16
+                // 降一级采样,比如之前closestRate是32，那么使用customDownsamplingRule就是16
                 int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
                 if (singleVarDataList.size() == 1) {
                     targetCount = 1;
                 }
-                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount,
+                        AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                 uniPoint2Map(uniPoints, allMultiValueMap, mapList);
             } else {
                 int targetCount = Math.max(singleVarDataList.size() / closestRate, 2);
-                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount,
+                        AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
                 uniPoint2Map(uniPoints, allMultiValueMap, mapList);
             }
         } else {
             logger.info("singleVarDataList.size(){bucketSize=0}:{}", singleVarDataList.size());
-            //singleVarDataList.size小于closestRate
+            // singleVarDataList.size小于closestRate
             int targetCount = Math.max(singleVarDataList.size() / customDownsamplingRule, 2);
             if (singleVarDataList.size() == 1) {
                 targetCount = 1;
             }
-            List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+            List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, targetCount,
+                    AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
             uniPoint2Map(uniPoints, allMultiValueMap, mapList);
         }
-//            if (bucketSize > 0) {//够一定数量进行降采样
-//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
-//                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
-//            } else if (bucketSize == 0 && customDownsamplingRule != 1 && customDownsamplingRule <= singleVarDataList.size() && singleVarDataList.size() > 2) { //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
-//                List<UniPoint> uniPoints = AdaptiveDownsamplingSelector.downsample(singleVarDataList, singleVarDataList.size() / customDownsamplingRule, AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
-//                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
-//            } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0) {//数量少的话直接返回全量表数据
-//                uniPoint2Map(singleVarDataList, allMultiValueMap, mapList);
-//               // break;
-//            }
-        //}
+        // if (bucketSize > 0) {//够一定数量进行降采样
+        // List<UniPoint> uniPoints =
+        // AdaptiveDownsamplingSelector.downsample(singleVarDataList, bucketSize,
+        // AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+        // uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+        // } else if (bucketSize == 0 && customDownsamplingRule != 1 &&
+        // customDownsamplingRule <= singleVarDataList.size() &&
+        // singleVarDataList.size() > 2) {
+        // //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
+        // List<UniPoint> uniPoints =
+        // AdaptiveDownsamplingSelector.downsample(singleVarDataList,
+        // singleVarDataList.size() / customDownsamplingRule,
+        // AdaptiveDownsamplingSelector.ExecType.SYNC_TYPE);
+        // uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+        // } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0)
+        // {//数量少的话直接返回全量表数据
+        // uniPoint2Map(singleVarDataList, allMultiValueMap, mapList);
+        // // break;
+        // }
+        // }
     }
 
-    private void handleFullTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName,
-                                    MultiValueMap allMultiValueMap, int per) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
+    private void handleFullTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
+                                    List<Map<String, String>> mapList, String fieldName,
+                                    MultiValueMap allMultiValueMap, int per)
+            throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
         Long beginLeftStartTimestamp = null;
         Long endLeftStartTimestamp = null;
         final Set<Map.Entry<BigDecimal, BigDecimal>> entrySet = allMultiValueMap.entrySet();
@@ -742,12 +819,13 @@ public class IoComposeServiceDatabase {
              * 不需要处理的情况:但是需要判断假如前面的处理第一条数据返回117850,起始点是117843，此时小于一个per，不需要处理了
              */
             long threadStartValue = startBd[0].longValue();
-            if (threadStartValue > reqStartTimestamp && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
+            if (threadStartValue > reqStartTimestamp
+                    && whetherNeedHandleHeadData(threadStartValue, reqStartTimestamp, per)) {
                 beginLeftStartTimestamp = threadStartValue;
             }
             BigDecimal[] endBd = (BigDecimal[]) valueList.get(valueList.size() - 1);
             final long threadLastValue = endBd[0].longValue();
-            //最后那条数据如果等于结束值，就不用下面的查询剩余数据了
+            // 最后那条数据如果等于结束值，就不用下面的查询剩余数据了
             if (threadLastValue != reqEndTimestamp) {
                 endLeftStartTimestamp = threadLastValue;
             }
@@ -755,14 +833,13 @@ public class IoComposeServiceDatabase {
         }
         if (beginLeftStartTimestamp != null) {
             Set<String> queryTable = getQueryTable(reqStartTimestamp, beginLeftStartTimestamp, currentTableName);
-            CountDownLatch lagCountDownLatch = new CountDownLatch(queryTable.size());
             List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
             List<UniPoint> lagUniPointList = new ArrayList<>();
             for (String table : queryTable) {
-                Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, reqStartTimestamp, beginLeftStartTimestamp, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
+                Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, reqStartTimestamp,
+                        beginLeftStartTimestamp, jdbcTemplate, fieldName, mapList));
                 lagResultList.add(future);
             }
-            lagCountDownLatch.await();
             for (Future<List<UniPoint>> future : lagResultList) {
                 lagUniPointList.addAll(future.get());
             }
@@ -770,17 +847,15 @@ public class IoComposeServiceDatabase {
             lagUniPointList.clear();
         }
 
-
         if (endLeftStartTimestamp != null) {
             Set<String> queryTable = getQueryTable(endLeftStartTimestamp, reqEndTimestamp, currentTableName);
-            CountDownLatch lagCountDownLatch = new CountDownLatch(queryTable.size());
             List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
             List<UniPoint> lagUniPointList = new ArrayList<>();
             for (String table : queryTable) {
-                Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, endLeftStartTimestamp, reqEndTimestamp, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
+                Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, endLeftStartTimestamp,
+                        reqEndTimestamp, jdbcTemplate, fieldName, mapList));
                 lagResultList.add(future);
             }
-            lagCountDownLatch.await();
             for (Future<List<UniPoint>> future : lagResultList) {
                 lagUniPointList.addAll(future.get());
             }
@@ -789,7 +864,6 @@ public class IoComposeServiceDatabase {
         }
 
     }
-
 
     public VsCodeRespVo traceLoadOriginal(VsCodeReqParam vsCodeReqParam) {
         Long requestId = vsCodeReqParam.getRequestId();
@@ -837,7 +911,6 @@ public class IoComposeServiceDatabase {
         return responseVo;
     }
 
-
     public VsCodeRespVo traceSave(VsCodeReqParam vsCodeReqParam) {
         Long requestId = vsCodeReqParam.getRequestId();
         VsCodeRespVo responseVo = new VsCodeRespVo();
@@ -871,7 +944,8 @@ public class IoComposeServiceDatabase {
             final List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.getCurrentFieldNames(traceId);
             for (TraceFieldMeta traceFieldMeta : traceFieldMetaList) {
                 for (Integer downRate : data) {
-                    backUpTableList.add(downsamplingTableName.concat("_").concat(traceFieldMeta.getVarName()).concat("_").concat(String.valueOf(downRate)));
+                    backUpTableList.add(downsamplingTableName.concat("_").concat(traceFieldMeta.getVarName())
+                            .concat("_").concat(String.valueOf(downRate)));
                 }
             }
             MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
@@ -888,7 +962,6 @@ public class IoComposeServiceDatabase {
         return responseVo;
 
     }
-
 
     public static int getPercentBucketRate(int size) {
         if (size <= 0) {
@@ -923,7 +996,7 @@ public class IoComposeServiceDatabase {
         }
         int beginSlot = (int) (reqStartTimestamp / ((totalSize / shardNum) * getConfigPer()));
         int endSlot = (int) (reqEndTimestamp / ((totalSize / shardNum) * getConfigPer()));
-        //防止endTimestamp请求过大导致实际没有那么多分表
+        // 防止endTimestamp请求过大导致实际没有那么多分表
         if (endSlot > shardNum - 1) {
             endSlot = shardNum - 1;
         }
@@ -942,7 +1015,8 @@ public class IoComposeServiceDatabase {
     private int chooseBucket(Long timestamp) {
         for (int i = 0; i < shardNum; i++) {
             final long first = (long) i * (totalSize / shardNum) * getConfigPer();
-            //eg:if (timestamp>0 && timestamp<=1000000)  if (timestamp>1000000 && timestamp<=2000000)
+            // eg:if (timestamp>0 && timestamp<=1000000) if (timestamp>1000000 &&
+            // timestamp<=2000000)
             if (timestamp >= first && timestamp <= first + (long) (totalSize / shardNum) * getConfigPer()) {
                 return i;
             }
@@ -951,19 +1025,23 @@ public class IoComposeServiceDatabase {
 
     }
 
-
     private void generateShardingTable(String tableName, List<TraceFieldMeta> traceFieldMetaList, Long traceId) {
         for (int a = 0; a < shardNum; a++) {
             StringBuilder sql = new StringBuilder();
-            // sql.append("DROP TABLE IF EXISTS " + "`").append(tableName.concat("_").concat(String.valueOf(i))).append("`").append(";");
-            sql.append(" CREATE TABLE " + "`").append(tableName.concat("_").concat(String.valueOf(a))).append("`").append("(");
+            // sql.append("DROP TABLE IF EXISTS " +
+            // "`").append(tableName.concat("_").concat(String.valueOf(i))).append("`").append(";");
+            sql.append(" CREATE TABLE " + "`").append(tableName.concat("_").concat(String.valueOf(a))).append("`")
+                    .append("(");
             sql.append("`id` bigint NOT NULL,");
             for (int i = 0; i < traceFieldMetaList.size(); i++) {
                 traceFieldMetaList.get(i).setTraceId(traceId);
                 if (i == traceFieldMetaList.size() - 1) {
-                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ").append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, PRIMARY KEY (`id`))ENGINE=InnoDB ");
+                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ")
+                            .append(traceFieldMetaList.get(i).getMysqlType())
+                            .append(" DEFAULT NULL, PRIMARY KEY (`id`))ENGINE=InnoDB ");
                 } else {
-                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ").append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, ");
+                    sql.append("`").append(traceFieldMetaList.get(i).getVarName()).append("`").append("  ")
+                            .append(traceFieldMetaList.get(i).getMysqlType()).append(" DEFAULT NULL, ");
                 }
             }
             String sqlStr = sql.toString();
@@ -985,9 +1063,11 @@ public class IoComposeServiceDatabase {
         try {
             for (int i = 0; i < shardNum; i++) {
                 final long first = (long) i * (totalSize / shardNum) * getConfigPer();
-                //eg:if (timestamp>0 && timestamp<=1000000)  if (timestamp>1000000 && timestamp<=2000000)
+                // eg:if (timestamp>0 && timestamp<=1000000) if (timestamp>1000000 &&
+                // timestamp<=2000000)
                 if (timestamp >= first && timestamp <= first + (long) (totalSize / shardNum) * getConfigPer()) {
-                    return ((long) i * (totalSize / shardNum) * getConfigPer() + (totalSize / shardNum) * getConfigPer());
+                    return ((long) i * (totalSize / shardNum) * getConfigPer()
+                            + (totalSize / shardNum) * getConfigPer());
                 }
             }
         } catch (Exception e) {
@@ -1000,8 +1080,8 @@ public class IoComposeServiceDatabase {
         VsCodeRespVo vsCodeRespVo = new VsCodeRespVo();
         Long requestId = vsCodeReqParam.getRequestId();
         try {
-            //long start = System.currentTimeMillis();
-            //删除主表和降采样表
+            // long start = System.currentTimeMillis();
+            // 删除主表和降采样表
             final List<TraceTableRelatedInfo> traceTableRelatedInfoList = traceTableRelatedInfoMapper.selectAll();
             for (TraceTableRelatedInfo traceTableRelatedInfo : traceTableRelatedInfoList) {
                 String tableName = traceTableRelatedInfo.getTableName();
@@ -1016,7 +1096,8 @@ public class IoComposeServiceDatabase {
                 if (CollectionUtils.isNotEmpty(traceFieldMetaList) && StringUtils.isNotEmpty(downsamplingTableName)) {
                     for (TraceFieldMeta traceFieldMeta : traceFieldMetaList) {
                         for (Integer downRate : data) {
-                            String downsamplingSql = "drop table " + downsamplingTableName.concat("_").concat(traceFieldMeta.getVarName()).concat("_").concat(String.valueOf(downRate));
+                            String downsamplingSql = "drop table " + downsamplingTableName.concat("_")
+                                    .concat(traceFieldMeta.getVarName()).concat("_").concat(String.valueOf(downRate));
                             jdbcTemplate.update(downsamplingSql);
                         }
                     }
@@ -1030,8 +1111,8 @@ public class IoComposeServiceDatabase {
             jdbcTemplate.update(traceFieldMetaDeleteSql);
             String traceNumInfoDeleteSql = "DELETE FROM table_num_info";
             jdbcTemplate.update(traceNumInfoDeleteSql);
-            //long end = System.currentTimeMillis();
-            //System.out.println("消耗了" + (end - start) + "ms");
+            // long end = System.currentTimeMillis();
+            // System.out.println("消耗了" + (end - start) + "ms");
         } catch (Exception e) {
             vsCodeRespVo.setRet(false);
             logger.error("trace gc 异常,报错信息为: " + e);
@@ -1047,17 +1128,17 @@ public class IoComposeServiceDatabase {
     int loopNum = 0;
 
     public void analyzeTraceLiveData2(VsCodeReqParam vsCodeReqParam) throws Exception {
-//        synchronized (lock) {
+        // synchronized (lock) {
         reentrantLock.lock();
         try (Connection connection = dataSource.getConnection()) {
-            //加锁防止降采样表不是从最开始的时间戳写入的
-            //final long start = System.currentTimeMillis();
+            // 加锁防止降采样表不是从最开始的时间戳写入的
+            // final long start = System.currentTimeMillis();
             JSONObject jsonObject = vsCodeReqParam.gettData();
             Set<String> keySet = jsonObject.keySet();
-            //待批量插入数据库的数据
+            // 待批量插入数据库的数据
             long traceId = 0L;
             List<String> originalFieldNameList = new ArrayList<>();
-            //  originalFieldNameList.add(VarConst.ID);
+            // originalFieldNameList.add(VarConst.ID);
             TraceTableRelatedInfo traceTableRelatedInfo;
             List<Object[]> objects = new LinkedList<>();
             for (String varName : keySet) {
@@ -1090,50 +1171,53 @@ public class IoComposeServiceDatabase {
                 fieldNameList.add(filterVarName);
             }
             fieldNameList.add(0, VarConst.ID);
-            //final long middle = System.currentTimeMillis();
-            //System.out.println("解析花费了: " + (middle - start));
+            // final long middle = System.currentTimeMillis();
+            // System.out.println("解析花费了: " + (middle - start));
             traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             if (!"traceStart".equalsIgnoreCase(traceTableRelatedInfo.getTraceStatus())) {
                 logger.warn("current trace status is {}, ignore this request", traceTableRelatedInfo.getTraceStatus());
                 return;
             }
-            // objects.sort((o1, o2) -> (((BigDecimal) o1[0]).intValue() - ((BigDecimal) o2[0]).intValue()));
+            // objects.sort((o1, o2) -> (((BigDecimal) o1[0]).intValue() - ((BigDecimal)
+            // o2[0]).intValue()));
             final Object[] firstObj = objects.get(0);
             final Object firstObjTimestamp = firstObj[0];
             final Object[] lastObj = objects.get(objects.size() - 1);
             final Object lastObjTimestamp = lastObj[0];
             long firstTimestamp = Long.parseLong(firstObjTimestamp.toString());
             long lastTimestamp = Long.parseLong(lastObjTimestamp.toString());
-            if (firstTimestamp > (long) (totalSize / shardNum) * getConfigPer()) {
+            if (firstTimestamp > (long) totalSize * getConfigPer()) {
                 logger.warn("发送的超出{}条数据!!,当前数据批次起始点{},结束点{}", totalSize, firstTimestamp, lastTimestamp);
                 return;
             }
             int bucket = 0;
             String fieldName = StringUtils.join(fieldNameList, ",");
             List<String> questionMarkList = new ArrayList<>();
-            //加1是因为还有id列(固定列)
+            // 加1是因为还有id列(固定列)
             for (int i = 0; i < fieldNameList.size(); i++) {
                 questionMarkList.add("?");
             }
-            if ((lastTimestamp <= (long) (totalSize / shardNum) * getConfigPer() && firstTimestamp < (long) (totalSize / shardNum) * getConfigPer())) {
+            if ((lastTimestamp <= (long) (totalSize / shardNum) * getConfigPer()
+                    && firstTimestamp < (long) (totalSize / shardNum) * getConfigPer())) {
                 bucket = chooseBucket(firstTimestamp);
                 String fullTable = traceTableRelatedInfo.getTableName().concat("_").concat(String.valueOf(bucket));
                 String prefixSql = "INSERT INTO " + fullTable + "(" + fieldName + ")" + "VALUES";
                 BaseUtils.executeFullTableBatchUpdate(connection, prefixSql, questionMarkList, objects);
             } else if (lastTimestamp / firstTimestamp == 1) {
-                //firstTimestamp:9990000  lastTimestamp:1000020  or      firstTimestamp:29990000  lastTimestamp:3000020这种情况就需要需要分别插入到2个shard表
+                // firstTimestamp:9990000 lastTimestamp:1000020 or firstTimestamp:29990000
+                // lastTimestamp:3000020这种情况就需要需要分别插入到2个shard表
                 List<Object[]> firstBatchObjects = new ArrayList<>();
-                //已经排序好的List
+                // 已经排序好的List
                 Long nearestRegion = 0L;
                 for (int i = 0; i < objects.size(); i++) {
                     long firstStamp;
                     long otherStamp;
                     final Object[] o = objects.get(i);
                     if (i == 0) {
-                        //这一批数据第一条数据的Timestamp
+                        // 这一批数据第一条数据的Timestamp
                         firstStamp = Long.parseLong(o[0].toString());
                         bucket = chooseBucket(firstStamp);
-                        //假设第一条数据是997855，最邻近的nearestRegion就是1000000
+                        // 假设第一条数据是997855，最邻近的nearestRegion就是1000000
                         nearestRegion = getNearestRegion(firstStamp);
                     }
                     otherStamp = Long.parseLong(o[0].toString());
@@ -1143,26 +1227,32 @@ public class IoComposeServiceDatabase {
                         break;
                     }
                 }
-                final String fullTable = traceTableRelatedInfo.getTableName().concat("_").concat(String.valueOf(bucket));
+                final String fullTable = traceTableRelatedInfo.getTableName().concat("_")
+                        .concat(String.valueOf(bucket));
                 String prefixSql = "INSERT INTO " + fullTable + "(" + fieldName + ")" + "VALUES";
                 BaseUtils.executeFullTableBatchUpdate(connection, prefixSql, questionMarkList, firstBatchObjects);
-                List<Object[]> otherBatchObjects = objects.stream().filter(item -> !firstBatchObjects.contains(item)).toList();
+                List<Object[]> otherBatchObjects = objects.stream().filter(item -> !firstBatchObjects.contains(item))
+                        .toList();
                 loopNum = loopNum + 1;
-//                if (CollectionUtils.isNotEmpty(firstBatchObjects)) {
-//                    writeTimestampToD(String.valueOf(firstTimestamp), "firstBatchObjects333", String.valueOf(bucket), String.valueOf(loopNum));
-//                }
-                //假如每次传30条数据，10201 10230和19991 20021的入库规则不同(目前只适用于shardNum=10)19001 19002 19003 ...20000
+                // if (CollectionUtils.isNotEmpty(firstBatchObjects)) {
+                // writeTimestampToD(String.valueOf(firstTimestamp), "firstBatchObjects333",
+                // String.valueOf(bucket), String.valueOf(loopNum));
+                // }
+                // 假如每次传30条数据，10201 10230和19991 20021的入库规则不同(目前只适用于shardNum=10)19001 19002 19003
+                // ...20000
                 if (CollectionUtils.isNotEmpty(otherBatchObjects)) {
-                    //writeTimestampToD(String.valueOf(lastTimestamp),"otherBatchObjects333",String.valueOf(bucket),String.valueOf(loopNum));
-                    final String otherFullTable = traceTableRelatedInfo.getTableName().concat("_").concat(String.valueOf(bucket + 1));
+                    // writeTimestampToD(String.valueOf(lastTimestamp),"otherBatchObjects333",String.valueOf(bucket),String.valueOf(loopNum));
+                    final String otherFullTable = traceTableRelatedInfo.getTableName().concat("_")
+                            .concat(String.valueOf(bucket + 1));
                     String otherPrefixSql = "INSERT INTO " + otherFullTable + "(" + fieldName + ")" + "VALUES";
-                    BaseUtils.executeFullTableBatchUpdate(connection, otherPrefixSql, questionMarkList, otherBatchObjects);
+                    BaseUtils.executeFullTableBatchUpdate(connection, otherPrefixSql, questionMarkList,
+                            otherBatchObjects);
                 }
             }
             List<String> filterList = fieldNameList.stream().filter(item -> !VarConst.ID.equals(item)).toList();
             handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer());
-            //final long end = System.currentTimeMillis();
-            //logger.info("总共花费了" + (end - start));
+            // final long end = System.currentTimeMillis();
+            // logger.info("总共花费了" + (end - start));
         } catch (Exception e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
@@ -1171,12 +1261,16 @@ public class IoComposeServiceDatabase {
         }
     }
 
-    public static Pair<List<UniPoint>, Integer> handleBigDownsampling(List<UniPoint> downsamplingDataList, String varName, float gap, Connection connection, int parentDownsamplingRate, String parentDownsamplingTableName) throws ClassNotFoundException, SQLException {
+    public static Pair<List<UniPoint>, Integer> handleBigDownsampling(List<UniPoint> downsamplingDataList,
+                                                                      String varName, float gap, Connection connection, int parentDownsamplingRate,
+                                                                      String parentDownsamplingTableName) throws ClassNotFoundException, SQLException {
         int bucketSize = (int) (downsamplingDataList.size() / gap);
-        String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(gap * parentDownsamplingRate));
+        String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_")
+                .concat(String.valueOf(gap * parentDownsamplingRate));
         downsamplingTableName = BaseUtils.earseLastPoint(downsamplingTableName);
         if (bucketSize > 0) {
-            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.HANDLE_BIGDOWNSAMPLING);
+            downsamplingDataList = AdaptiveDownsamplingSelector.downsample(downsamplingDataList, bucketSize,
+                    AdaptiveDownsamplingSelector.ExecType.HANDLE_BIGDOWNSAMPLING);
         }
         List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsamplingDataList, 2);
         BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
@@ -1184,7 +1278,8 @@ public class IoComposeServiceDatabase {
     }
 
     public MultiValueMap getSingleTimestampFileHandleExecutor(VsCodeReqParam vsCodeReqParam) throws Exception {
-        //System.out.println("getSingleTimestampFileHandleExecutor=" + Thread.currentThread().getName());
+        // System.out.println("getSingleTimestampFileHandleExecutor=" +
+        // Thread.currentThread().getName());
         List<String> originalVarList = vsCodeReqParam.getVarList();
         List<String> filterVarList = new ArrayList<>();
         List<Map<String, String>> mapList = new ArrayList<>();
@@ -1210,7 +1305,8 @@ public class IoComposeServiceDatabase {
             reqTimestamp = BaseUtils.getCircleStamp(reqTimestamp, getConfigPer());
             int bucket = chooseBucket(reqTimestamp);
             Object[] regionParam = new Object[]{reqTimestamp};
-            String sql = "select " + allFieldName + "  from " + currentTraceTableName.concat("_").concat(String.valueOf(bucket)) + " where id=?";
+            String sql = "select " + allFieldName + "  from "
+                    + currentTraceTableName.concat("_").concat(String.valueOf(bucket)) + " where id=?";
             List<Map<String, Object>> list = jdbcTemplate.queryForList(sql, regionParam);
             MultiValueMap multiValueMap = convertList2MultiMap(list, mapList);
             allMultiValueMap.putAll(multiValueMap);
@@ -1260,7 +1356,6 @@ public class IoComposeServiceDatabase {
         logger.info("trace load successfully executed");
         return responseVo;
     }
-
 
     private Integer getConfigPer() {
         Integer per = perMap.get("per");

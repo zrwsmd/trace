@@ -28,7 +28,6 @@ public class QueryEachDownsamplingTableHandler implements Callable<List<UniPoint
     private final Long reqStartTimestamp;
     private final Long reqEndTimestamp;
     private final JdbcTemplate jdbcTemplate;
-    private final CountDownLatch countDownLatch;
     private final String varName;
     private final Integer closestRate;
     private final Integer shardNum;
@@ -36,16 +35,16 @@ public class QueryEachDownsamplingTableHandler implements Callable<List<UniPoint
 
     private static final Integer CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
     private final ThreadPoolExecutor pool = new ThreadPoolExecutor(CORE_POOL_SIZE, CORE_POOL_SIZE * 2, 60,
-            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000));
+            TimeUnit.SECONDS, new LinkedBlockingQueue<>(1000),
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
     public QueryEachDownsamplingTableHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp,
-                                             JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, Integer closestRate,
+                                             JdbcTemplate jdbcTemplate, String varName, Integer closestRate,
                                              Integer shardNum, List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.reqStartTimestamp = reqStartTimestamp;
         this.reqEndTimestamp = reqEndTimestamp;
         this.jdbcTemplate = jdbcTemplate;
-        this.countDownLatch = countDownLatch;
         this.varName = varName;
         this.closestRate = closestRate;
         this.shardNum = shardNum;
@@ -92,10 +91,9 @@ public class QueryEachDownsamplingTableHandler implements Callable<List<UniPoint
             }
         } catch (Exception e) {
             logger.error(QueryEachDownsamplingTableHandler.class.getName(), e);
-        } finally {
-            countDownLatch.countDown();
-            pool.shutdown();
+            throw e;
         }
+        pool.shutdown();
 
         // Object[] samplingParam = new Object[]{reqStartTimestamp,
         // reqEndTimestamp,varName,closestRate };
