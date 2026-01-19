@@ -3244,32 +3244,27 @@ UNIFORM_WITH_EXTREMES 优势:
 对每个窗口进行特征提取和信号分类：
 
 ```java
-for(int i = 0;
-i<numWindows;i++){
-int start = i * adaptiveWindowSize;
-int end = Math.min(start + adaptiveWindowSize, totalPoints);
-List<UniPoint> windowData = dataPoints.subList(start, end);
+for (int i = 0; i < numWindows; i++) {
+    int start = i * adaptiveWindowSize;
+    int end = Math.min(start + adaptiveWindowSize, totalPoints);
+    List<UniPoint> windowData = dataPoints.subList(start, end);
 
-// 提取窗口特征
-SignalFeatures features = extractFeatures(windowData);
+    // 提取窗口特征
+    SignalFeatures features = extractFeatures(windowData);
 
-// 分类窗口信号类型
-SignalType type = classifySignal(features);
+    // 分类窗口信号类型
+    SignalType type = classifySignal(features);
 
-// 计算窗口权重（重要性）
-double weight = calculateBalancedWeight(type, features);
+    // 计算窗口权重（重要性）
+    double weight = calculateBalancedWeight(type, features);
 
-// 保存结果
-allFeatures[i]=features;
-signalTypes[i]=type;
-weights[i]=weight;
-windowSizes[i]=windowData.
+    // 保存结果
+    allFeatures[i] = features;
+    signalTypes[i] = type;
+    weights[i] = weight;
+    windowSizes[i] = windowData.size();
 
-size();
-
-totalWeightedSize +=weight *windowData.
-
-size();
+    totalWeightedSize += weight * windowData.size();
 }
 ```
 
@@ -3294,48 +3289,31 @@ int[] windowTargets = allocatePointsV4(
 对每个窗口应用最匹配的降采样算法：
 
 ```java
-for(int i = 0;
-i<numWindows;i++){
-int start = i * adaptiveWindowSize;
-int end = Math.min(start + adaptiveWindowSize, totalPoints);
-List<UniPoint> windowData = dataPoints.subList(start, end);
+for (int i = 0; i < numWindows; i++) {
+    int start = i * adaptiveWindowSize;
+    int end = Math.min(start + adaptiveWindowSize, totalPoints);
+    List<UniPoint> windowData = dataPoints.subList(start, end);
 
-int windowTargetCount = windowTargets[i];
+    int windowTargetCount = windowTargets[i];
 
-// 选择算法
-DownsamplingAlgorithm algorithm = selectAlgorithm(
-        signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
+    // 选择算法
+    DownsamplingAlgorithm algorithm = selectAlgorithm(
+            signalTypes[i], allFeatures[i], windowData.size(), windowTargetCount);
 
-// 应用算法
-List<UniPoint> windowResult = applyAlgorithm(
-        algorithm, windowData, windowTargetCount, allFeatures[i]);
+    // 应用算法
+    List<UniPoint> windowResult = applyAlgorithm(
+            algorithm, windowData, windowTargetCount, allFeatures[i]);
 
-// 去重边界点
-    if(!result.
-
-isEmpty() &&!windowResult.
-
-isEmpty()){
-        if(
-
-pointsEqual(result.get(result.size() -1),windowResult.
-
-get(0))){
-windowResult =windowResult.
-
-size() >1
-        ?windowResult.
-
-subList(1,windowResult.size())
-        :Collections.
-
-emptyList();
+    // 去重边界点
+    if (!result.isEmpty() && !windowResult.isEmpty()) {
+        if (pointsEqual(result.get(result.size() - 1), windowResult.get(0))) {
+            windowResult = windowResult.size() > 1
+                    ? windowResult.subList(1, windowResult.size())
+                    : Collections.emptyList();
         }
-                }
+    }
 
-                result.
-
-addAll(windowResult);
+    result.addAll(windowResult);
 }
 ```
 
@@ -3425,9 +3403,9 @@ double weight10 = calculateBalancedWeight(type10, features10);
 **计算总加权大小**：
 
 ```java
-totalWeightedSize =(5*0.3*400)+(15*2.5*400)+(5*0.8*400)
-        =600+15000+1600
-        =17200
+totalWeightedSize = (5 * 0.3 * 400) + (15 * 2.5 * 400) + (5 * 0.8 * 400)
+        = 600 + 15000 + 1600
+        = 17200
 ```
 
 **基础分配**（Window 0 为例）：
@@ -3435,13 +3413,9 @@ totalWeightedSize =(5*0.3*400)+(15*2.5*400)+(5*0.8*400)
 ```java
 // Window 0 的基础分配
 int baseAllocation0 = (int) Math.round(500 * (0.3 * 400) / 17200);
-                    =(int)Math.
-
-round(500*120/17200)
-                    =(int)Math.
-
-round(3.49)
-                    =3
+                   = (int) Math.round(500 * 120 / 17200)
+                   = (int) Math.round(3.49)
+                   = 3
 ```
 
 **基础分配**（Window 10 为例）：
@@ -3449,13 +3423,9 @@ round(3.49)
 ```java
 // Window 10 的基础分配
 int baseAllocation10 = (int) Math.round(500 * (2.5 * 400) / 17200);
-                     =(int)Math.
-
-round(500*1000/17200)
-                     =(int)Math.
-
-round(29.07)
-                     =29
+                    = (int) Math.round(500 * 1000 / 17200)
+                    = (int) Math.round(29.07)
+                    = 29
 ```
 
 **最小密度保护**：
@@ -3463,10 +3433,8 @@ round(29.07)
 ```java
 // 每个窗口至少保证 2% 的点
 int minPoints = Math.max(3, (int) Math.ceil(400 * 0.02));
-              =Math.
-
-max(3,8)
-              =8
+              = Math.max(3, 8)
+              = 8
 
 // Window 0 的最终分配（基础分配 3 < 最小值 8）
 windowTargets[0]=8;
@@ -3730,7 +3698,7 @@ private static double calculateBalancedWeight(SignalType type, SignalFeatures fe
 权重由四个部分组成：
 
 ```java
-finalWeight =baseWeight +complexityBonus +spikeBonus +periodicityBonus
+finalWeight = baseWeight + complexityBonus + spikeBonus + periodicityBonus
 ```
 
 其中：
@@ -3750,9 +3718,7 @@ finalWeight =baseWeight +complexityBonus +spikeBonus +periodicityBonus
 
 ```java
 double baseWeight = features.normalizedVolatility * 1.2;
-baseWeight =Math.
-
-max(0.3,baseWeight); // 设置下限 0.3
+baseWeight = Math.max(0.3, baseWeight); // 设置下限 0.3
 ```
 
 **核心指标**：`normalizedVolatility` (归一化波动率)
@@ -3861,9 +3827,7 @@ double periodicityBonus = (type == SignalType.PERIODIC
 
 ```java
 double finalWeight = baseWeight + complexityBonus + spikeBonus + periodicityBonus;
-return Math.
-
-max(0.3,Math.min(3.0, finalWeight));
+return Math.max(0.3, Math.min(3.0, finalWeight));
 ```
 
 **范围限制**：
@@ -3900,9 +3864,7 @@ type =SignalType.FLAT
 
 ```java
 baseWeight =0.05*1.2=0.06
-baseWeight =Math.
-
-max(0.3,0.06) =0.3;  // 触发下限保护
+baseWeight = Math.max(0.3, 0.06) = 0.3;  // 触发下限保护
 ```
 
 **步骤 2：复杂度加成**
@@ -3930,9 +3892,7 @@ periodicityBonus =0.0  // 不是 PERIODIC 或 AMPLITUDE_MODULATED
 
 ```java
 finalWeight =0.3+0.201+0.0+0.0=0.501
-finalWeight =Math.
-
-max(0.3,Math.min(3.0, 0.501))=0.501;
+finalWeight = Math.max(0.3, Math.min(3.0, 0.501)) = 0.501;
 ```
 
 **最终权重**：**0.501** (接近最低权重)
@@ -3961,9 +3921,7 @@ type =SignalType.PERIODIC
 
 ```java
 baseWeight =1.8*1.2=2.16
-baseWeight =Math.
-
-max(0.3,2.16) =2.16;
+baseWeight = Math.max(0.3, 2.16) = 2.16;
 ```
 
 **步骤 2：复杂度加成**
@@ -3991,9 +3949,7 @@ periodicityBonus =0.75*0.5=0.375  // 触发周期性加成
 
 ```java
 finalWeight =2.16+0.29+0.0+0.375=2.825
-finalWeight =Math.
-
-max(0.3,Math.min(3.0, 2.825))=2.825;
+finalWeight = Math.max(0.3, Math.min(3.0, 2.825)) = 2.825;
 ```
 
 **最终权重**：**2.825** (接近最高权重)
@@ -4022,9 +3978,7 @@ type =SignalType.STEP
 
 ```java
 baseWeight =1.2*1.2=1.44
-baseWeight =Math.
-
-max(0.3,1.44) =1.44;
+baseWeight = Math.max(0.3, 1.44) = 1.44;
 ```
 
 **步骤 2：复杂度加成**
@@ -4052,9 +4006,7 @@ periodicityBonus =0.0  // 不是周期信号
 
 ```java
 finalWeight =1.44+0.165+1.0+0.0=2.605
-finalWeight =Math.
-
-max(0.3,Math.min(3.0, 2.605))=2.605;
+finalWeight = Math.max(0.3, Math.min(3.0, 2.605)) = 2.605;
 ```
 
 **最终权重**：**2.605** (高权重)
@@ -4083,9 +4035,7 @@ type =SignalType.AMPLITUDE_MODULATED
 
 ```java
 baseWeight =2.1*1.2=2.52
-baseWeight =Math.
-
-max(0.3,2.52) =2.52;
+baseWeight = Math.max(0.3, 2.52) = 2.52;
 ```
 
 **步骤 2：复杂度加成**
@@ -4113,9 +4063,7 @@ periodicityBonus =0.82*0.5=0.41  // 强周期性加成
 
 ```java
 finalWeight =2.52+0.285+0.0+0.41=3.215
-finalWeight =Math.
-
-max(0.3,Math.min(3.0, 3.215))=3.0;  // 触发上限！
+finalWeight = Math.max(0.3, Math.min(3.0, 3.215)) = 3.0;  // 触发上限！
 ```
 
 **最终权重**：**3.0** (最高权重)
@@ -4254,9 +4202,7 @@ double baseWeight = features.normalizedVolatility * 1.2;
 **v4.0 改进**：
 
 ```java
-baseWeight =Math.
-
-max(0.3,baseWeight);
+baseWeight = Math.max(0.3, baseWeight);
 // 即使 normalizedVolatility = 0.05
 // baseWeight = 0.3 （保底！）
 ```
@@ -4286,9 +4232,7 @@ max(0.3,baseWeight);
 **解决方案**：
 
 ```java
-finalWeight =Math.
-
-min(3.0,finalWeight);
+finalWeight = Math.min(3.0, finalWeight);
 ```
 
 **修正后**：
