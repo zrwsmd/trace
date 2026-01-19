@@ -17,6 +17,7 @@
 - [十一、hybridEnvelopeDownsampling (混合包络降采样)](#十一hybridenvelopedownsampling-混合包络降采样)
 - [十二、uniformDownsampling (均匀降采样)](#十二uniformdownsampling-均匀降采样)
 - [十三、uniformWithExtremesDownsampling (极值点保护 + 均匀分布降采样)](#十三uniformwithextremesdownsampling-极值点保护--均匀分布降采样--v50-新增)
+- [十四、windowBasedDownsamplingV4 (基于窗口的自适应降采样 V4)](#十四windowbaseddownsamplingv4-基于窗口的自适应降采样-v4)
 
 ---
 
