@@ -1104,9 +1104,10 @@ public class IoComposeServiceDatabase {
             final Object lastObjTimestamp = lastObj[0];
             long firstTimestamp = Long.parseLong(firstObjTimestamp.toString());
             long lastTimestamp = Long.parseLong(lastObjTimestamp.toString());
-//            if (firstTimestamp > (long) (totalSize / shardNum) * getConfigPer()) {
-//                writeTimestampToD4("发送的超出1000万数据!!", firstTimestamp, lastTimestamp);
-//            }
+            if (firstTimestamp > (long) (totalSize / shardNum) * getConfigPer()) {
+                logger.warn("发送的超出{}条数据!!,当前数据批次起始点{},结束点{}", totalSize, firstTimestamp, lastTimestamp);
+                return;
+            }
             int bucket = 0;
             String fieldName = StringUtils.join(fieldNameList, ",");
             List<String> questionMarkList = new ArrayList<>();
