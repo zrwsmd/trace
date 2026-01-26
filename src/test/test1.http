@@ -6,3 +6,15 @@ POST http://localhost:17778/api/logging/toggle?enabled=false
 
 ### 查询状态
 GET http://localhost:17778/api/logging/status
+
+POST http://localhost:17777/io/traceSave
+Content-Type: application/json
+
+{
+  "requestId": 123456789,
+  "type": "traceSave",
+  "tData": {
+    "id": 768962893423,
+    "path": "E:/trace-dump/trace_dump.sql"
+  }
+}
