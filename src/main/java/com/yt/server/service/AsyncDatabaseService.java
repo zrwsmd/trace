@@ -85,7 +85,7 @@ public class AsyncDatabaseService {
                     String line;
                     int progress = 10;
                     while ((line = reader.readLine()) != null) {
-                        System.out.println(line);
+                        //System.out.println(line);
 
                         // 简单的进度估算（可以根据实际情况优化）
                         if (progress < 90) {
@@ -135,7 +135,7 @@ public class AsyncDatabaseService {
         taskStatus.setMessage(message);
         taskStatus.setUpdateTime(System.currentTimeMillis());
 
-        System.out.println("任务 " + taskId + ": " + status + " - " + progress + "% - " + message);
+        logger.debug("任务 " + taskId + ": " + status + " - " + progress + "% - " + message);
     }
 
     /**
@@ -219,7 +219,7 @@ public class AsyncDatabaseService {
                 String line;
                 int progress = 15;
                 while ((line = reader.readLine()) != null) {
-                    System.out.println(line);
+                    //System.out.println(line);
 
                     // 简单的进度估算
                     if (progress < 90) {
@@ -233,7 +233,7 @@ public class AsyncDatabaseService {
                     }
 
                     if (line.contains("Warning")) {
-                        System.out.println("警告: " + line);
+                        //System.out.println("警告: " + line);
                     }
                 }
             }
@@ -250,7 +250,7 @@ public class AsyncDatabaseService {
             if (outputFile.exists() && outputFile.length() > 0) {
                 long fileSizeMB = outputFile.length() / (1024 * 1024);
                 updateTaskStatus(taskId, "success", 100, "导出完成！文件大小: " + fileSizeMB + " MB");
-                System.out.println("导出成功: " + savePath + " (" + fileSizeMB + " MB)");
+                logger.debug("导出成功: " + savePath + " (" + fileSizeMB + " MB)");
             } else {
                 updateTaskStatus(taskId, "error", 0, "导出失败：文件未生成或为空");
                 throw new RuntimeException("导出失败：文件未生成或为空");
