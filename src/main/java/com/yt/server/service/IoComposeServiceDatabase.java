@@ -59,6 +59,9 @@ public class IoComposeServiceDatabase {
     @Autowired
     private HandleWasteTimeService handleWasteTimeService;
 
+    @Autowired
+    private OptimizedDatabaseService optimizedDatabaseService;
+
     public static final int lagNum = 3000;
 
     // 16384减去首位2个固定桶
@@ -948,6 +951,7 @@ public class IoComposeServiceDatabase {
                             .concat("_").concat(String.valueOf(downRate)));
                 }
             }
+            //optimizedDatabaseService.backupOptimized(savePath, DATABASE_NAME, backUpTableList);
             MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
             logger.info("保存文件" + savePath + "成功");
             responseVo.setResponseId(requestId);
@@ -1338,7 +1342,8 @@ public class IoComposeServiceDatabase {
                 responseVo.setRet(false);
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
             }
-            MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
+            // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
+            optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();
             map.put("traceCfg", traceConfig);
