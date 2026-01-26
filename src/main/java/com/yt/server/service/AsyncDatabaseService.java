@@ -1,6 +1,8 @@
 package com.yt.server.service;
 
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +31,8 @@ public class AsyncDatabaseService {
 
     // 存储任务状态
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
+    private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseService.class);
+
 
     /**
      * 异步导入（立即返回任务ID）
@@ -40,7 +44,7 @@ public class AsyncDatabaseService {
             // 更新状态：进行中
             updateTaskStatus(taskId, "running", 0, "开始导入...");
 
-            System.out.println("开始导入: " + sqlFilePath);
+            logger.debug("开始导入: " + sqlFilePath);
 
             // 1. 优化配置
             updateTaskStatus(taskId, "running", 5, "优化MySQL配置...");
