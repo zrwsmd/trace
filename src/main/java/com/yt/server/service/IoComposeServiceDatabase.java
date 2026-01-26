@@ -1352,9 +1352,7 @@ public class IoComposeServiceDatabase {
             // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
             //optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
             //optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
-            // 生成任务ID
-            String taskId = UUID.randomUUID().toString();
-
+            String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
             asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME);
 
