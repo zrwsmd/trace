@@ -1,24 +1,13 @@
 package com.yt.server.util;
 
 import cn.hutool.core.thread.ThreadFactoryBuilder;
-import cn.hutool.core.util.RandomUtil;
-import cn.hutool.core.util.ZipUtil;
-import com.alibaba.fastjson.JSONObject;
-import com.yt.server.aot.DbCondition;
-import com.yt.server.service.IoComposeServiceDatabase;
 import org.apache.commons.compress.archivers.ArchiveEntry;
 import org.apache.commons.compress.archivers.zip.*;
-import org.apache.commons.compress.archivers.zip.ZipFile;
 import org.apache.commons.compress.parallel.InputStreamSupplier;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.input.NullInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
-import javax.sql.DataSource;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
@@ -27,12 +16,9 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.ReadableByteChannel;
 import java.nio.channels.WritableByteChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.zip.*;
 
 import static com.yt.server.service.IoComposeServiceDatabase.DATABASE_NAME;
 
@@ -113,12 +99,13 @@ public class MysqlUtils {
         OutputStreamWriter writer = null;
         FileOutputStream fout = null;
         try {
-            String mysqlInstallDir = getMysqlInstallDir(databaseName);
+            //String mysqlInstallDir = getMysqlInstallDir(databaseName);
+            String mysqlInstallDir = "D://trace-mysql//bin//";
             Runtime rt = Runtime.getRuntime();
             // rt.exec("cmd");
             StringBuilder stringBuilder = new StringBuilder();
             //-t参数只备份数据，不包含表结构
-            stringBuilder.append(mysqlInstallDir).append("mysqldump.exe -uroot -p123456   ").append(databaseName);
+            stringBuilder.append(mysqlInstallDir).append("mysqldump.exe -P 3307 -uroot -p123456   ").append(databaseName);
             stringBuilder.append(" ");
             for (String tableName : tableNameList) {
                 stringBuilder.append(tableName);

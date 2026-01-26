@@ -7,6 +7,7 @@ POST http://localhost:17778/api/logging/toggle?enabled=false
 ### 查询状态
 GET http://localhost:17778/api/logging/status
 
+### 保存 Trace 数据到文件
 POST http://localhost:17777/io/traceSave
 Content-Type: application/json
 
