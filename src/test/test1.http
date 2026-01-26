@@ -29,6 +29,15 @@ Content-Type: application/json
   "type": "traceLoad",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/trace_dump2.sql"
+    "path": "E:/trace-dump/trace_dump.sql"
   }
 }
+
+### 查询任务进度
+GET http://localhost:17777/io/task/status/test-task-id
+
+### 清除任务状态
+DELETE http://localhost:17777/io/task/clear/test-task-id
+
+### 获取所有任务状态
+GET http://localhost:17777/io/task/all
