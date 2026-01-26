@@ -316,4 +316,76 @@ public class OptimizedDatabaseService {
             System.err.println("执行SQL失败: " + sql + ", 退出码: " + exitCode);
         }
     }
+
+    /**
+     * 优化的顺序导入（最稳定，推荐）
+     */
+    public String loadOptimizedSequential(String sqlFilePath, String databaseName) throws Exception {
+
+        System.out.println("开始导入: " + sqlFilePath);
+
+        // 1. 优化配置
+        System.out.println("优化MySQL配置...");
+        executeSqlCommand("SET GLOBAL foreign_key_checks=0");
+        executeSqlCommand("SET GLOBAL unique_checks=0");
+        executeSqlCommand("SET GLOBAL innodb_flush_log_at_trx_commit=2");
+        executeSqlCommand("SET GLOBAL max_allowed_packet=1073741824"); // 1GB
+        executeSqlCommand("SET GLOBAL wait_timeout=28800");
+        executeSqlCommand("SET GLOBAL interactive_timeout=28800");
+        executeSqlCommand("SET GLOBAL net_read_timeout=3600");
+        executeSqlCommand("SET GLOBAL net_write_timeout=3600");
+
+        // 如果可以修改，建议也设置这些（需要重启MySQL）
+        // SET GLOBAL innodb_buffer_pool_size=4294967296;  // 4GB
+        // SET GLOBAL innodb_log_file_size=536870912;      // 512MB
+
+        try {
+            // 2. 直接用 source 命令导入（不分割）
+            String sqlPath = sqlFilePath.replace("\\", "/");
+
+            String command = String.format(
+                    "%smysql.exe -P %d -u%s -p%s " +
+                            "--max_allowed_packet=1G " +
+                            "--net_buffer_length=16384 " +
+                            "%s -e \"source %s\"",
+                    MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD,
+                    databaseName, sqlPath
+            );
+
+            System.out.println("开始导入，请耐心等待...");
+
+            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+            pb.redirectErrorStream(true);
+
+            Process process = pb.start();
+
+            // 实时输出进度
+            try (BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    System.out.println(line);
+                    if (line.contains("ERROR")) {
+                        System.err.println("错误: " + line);
+                    }
+                }
+            }
+
+            int exitCode = process.waitFor();
+
+            if (exitCode != 0) {
+                throw new RuntimeException("导入失败，退出码: " + exitCode);
+            }
+
+            System.out.println("导入完成！");
+            return "导入成功";
+
+        } finally {
+            // 3. 恢复配置
+            System.out.println("恢复MySQL配置...");
+            executeSqlCommand("SET GLOBAL foreign_key_checks=1");
+            executeSqlCommand("SET GLOBAL unique_checks=1");
+            executeSqlCommand("SET GLOBAL innodb_flush_log_at_trx_commit=1");
+        }
+    }
 }

@@ -1343,7 +1343,9 @@ public class IoComposeServiceDatabase {
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
             }
             // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
-            optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
+            //optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
+            optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
+
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();
             map.put("traceCfg", traceConfig);
