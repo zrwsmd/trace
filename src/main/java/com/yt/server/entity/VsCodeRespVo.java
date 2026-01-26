@@ -20,7 +20,19 @@ public class VsCodeRespVo {
 
     private JSONObject tData;
 
+    //针对数据的导入导出
     private String taskId;
+
+    //针对数据的导入导出
+    private String message;
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
 
     public String getTaskId() {
         return taskId;

@@ -120,33 +120,6 @@ public class IoController {
     }
 
     /**
-     * 启动导入任务（立即返回任务ID）
-     */
-    @PostMapping("/restore/start")
-    public Map<String, String> startRestore(@RequestParam String sqlFile,
-                                            @RequestParam String databaseName) {
-        Map<String, String> result = new HashMap<>();
-
-        try {
-            // 生成任务ID
-            String taskId = UUID.randomUUID().toString();
-
-            // 启动异步任务
-            asyncDatabaseService.loadAsync(taskId, sqlFile, databaseName);
-
-            result.put("success", "true");
-            result.put("taskId", taskId);
-            result.put("message", "导入任务已启动，请使用taskId查询进度");
-
-        } catch (Exception e) {
-            result.put("success", "false");
-            result.put("message", "启动失败: " + e.getMessage());
-        }
-
-        return result;
-    }
-
-    /**
      * 查询任务进度（导入和导出共用）
      */
     @GetMapping("/task/status/{taskId}")
