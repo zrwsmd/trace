@@ -1,17 +1,10 @@
 package com.yt.server.entity;
 
 import com.alibaba.fastjson.JSONObject;
-import org.apache.commons.collections.map.MultiValueMap;
-import org.springframework.web.bind.annotation.RequestBody;
 
-import java.math.BigDecimal;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Random;
-
-import static com.yt.server.util.BaseUtils.getBigDecimal;
 
 /**
  * @description:
@@ -29,9 +22,19 @@ public class VsCodeReqParam extends RequestParameter {
 
     private JSONObject tData;
 
-    private List<Long> reqTimestamp=new ArrayList<>();
+    private List<Long> reqTimestamp = new ArrayList<>();
 
-    private List<Long>traceIdList=new LinkedList<>();
+    private List<Long> traceIdList = new LinkedList<>();
+
+    private String taskId;
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
+        this.taskId = taskId;
+    }
 
     public Long getRequestId() {
         return requestId;

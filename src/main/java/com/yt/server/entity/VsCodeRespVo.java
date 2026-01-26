@@ -20,6 +20,15 @@ public class VsCodeRespVo {
 
     private JSONObject tData;
 
+    private String taskId;
+
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(String taskId) {
+        this.taskId = taskId;
+    }
 
     public Long getResponseId() {
         return responseId;

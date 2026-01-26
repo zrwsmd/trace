@@ -105,12 +105,16 @@ public class IoController {
 
     @PostMapping("/traceSave")
     public VsCodeRespVo traceSave(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
+        String taskId = UUID.randomUUID().toString();
+        vsCodeReqParam.setTaskId(taskId);
         return ioComposeServiceDatabase.traceSave(vsCodeReqParam);
 
     }
 
     @PostMapping("/traceLoad")
     public VsCodeRespVo traceLoad(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
+        String taskId = UUID.randomUUID().toString();
+        vsCodeReqParam.setTaskId(taskId);
         return ioComposeServiceDatabase.traceLoad(vsCodeReqParam);
 
     }
