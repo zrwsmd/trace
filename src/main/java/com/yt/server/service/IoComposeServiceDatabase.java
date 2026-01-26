@@ -969,7 +969,7 @@ public class IoComposeServiceDatabase {
             logger.error("trace save 异常,报错信息为: " + e);
             return responseVo;
         }
-        logger.info("trace save successfully executed");
+        logger.info("trace async save successfully executed");
         return responseVo;
 
     }
