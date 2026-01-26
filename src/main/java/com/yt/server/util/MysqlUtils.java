@@ -168,8 +168,9 @@ public class MysqlUtils {
             // String fPath = "e:/dd.sql";
             Runtime rt = Runtime.getRuntime();
             StringBuilder stringBuilder = new StringBuilder();
-            String mysqlInstallDir = getMysqlInstallDir(DATABASE_NAME);
-            stringBuilder.append(mysqlInstallDir).append("mysql.exe -uroot -p123456  ").append(databaseName);
+            //String mysqlInstallDir = getMysqlInstallDir(DATABASE_NAME);
+            String mysqlInstallDir = "D://trace-mysql//bin//";
+            stringBuilder.append(mysqlInstallDir).append("mysql.exe -P 3307 -uroot -p123456  ").append(databaseName);
             String command = stringBuilder.toString();
             // System.out.println(command);
             Process process = rt.exec(command);
@@ -461,8 +462,9 @@ public class MysqlUtils {
             // String fPath = "e:/dd.sql";
             Runtime rt = Runtime.getRuntime();
             StringBuilder stringBuilder = new StringBuilder();
-            String mysqlInstallDir = getMysqlInstallDir(DATABASE_NAME);
-            stringBuilder.append(mysqlInstallDir).append("mysql.exe -uroot -p123456  ").append(databaseName);
+            //String mysqlInstallDir = getMysqlInstallDir(DATABASE_NAME);
+            String mysqlInstallDir = "D://trace-mysql//bin//";
+            stringBuilder.append(mysqlInstallDir).append("mysql.exe -P 3307 -uroot -p123456  ").append(databaseName);
             String command = stringBuilder.toString();
             // System.out.println(command);
             Process process = rt.exec(command);
@@ -478,8 +480,6 @@ public class MysqlUtils {
                 buffer.clear();
             }
 
-        } catch (SQLException | ClassNotFoundException ex) {
-            throw new RuntimeException(ex);
         } finally {
             if (out != null) {
                 out.close();

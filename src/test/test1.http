@@ -19,3 +19,16 @@ Content-Type: application/json
     "path": "E:/trace-dump/trace_dump.sql"
   }
 }
+
+### 加载 Trace 数据从文件
+POST http://localhost:17777/io/traceLoad
+Content-Type: application/json
+
+{
+  "requestId": 123456790,
+  "type": "traceLoad",
+  "tData": {
+    "id": 768962893423,
+    "path": "E:/trace-dump/trace_dump.sql"
+  }
+}
