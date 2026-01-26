@@ -62,6 +62,9 @@ public class IoComposeServiceDatabase {
     @Autowired
     private OptimizedDatabaseService optimizedDatabaseService;
 
+    @Autowired
+    private AsyncDatabaseService asyncDatabaseService;
+
     public static final int lagNum = 3000;
 
     // 16384减去首位2个固定桶
@@ -1344,7 +1347,12 @@ public class IoComposeServiceDatabase {
             }
             // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
             //optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
-            optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
+            //optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
+            // 生成任务ID
+            String taskId = UUID.randomUUID().toString();
+
+            // 启动异步任务
+            asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME);
 
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();
