@@ -957,8 +957,9 @@ public class IoComposeServiceDatabase {
             //optimizedDatabaseService.backupOptimized(savePath, DATABASE_NAME, backUpTableList);
             //MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
 
-            asyncDatabaseService.backupAsync(taskId, savePath, DATABASE_NAME, backUpTableList);
+            asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList);
             logger.info("保存文件" + savePath + "成功");
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceSave");
             responseVo.setRet(true);
@@ -1360,6 +1361,7 @@ public class IoComposeServiceDatabase {
             Map<String, Object> map = new HashMap<>();
             map.put("traceCfg", traceConfig);
             respJson.put("rData", map);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceLoad");
             responseVo.setRet(true);
