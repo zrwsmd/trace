@@ -11,6 +11,7 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -143,6 +144,20 @@ public class AsyncDatabaseService {
      */
     public TaskStatus getTaskStatus(String taskId) {
         return taskStatusMap.get(taskId);
+    }
+
+    /**
+     * 清除已完成的任务状态（可选，避免内存泄漏）
+     */
+    public void clearTaskStatus(String taskId) {
+        taskStatusMap.remove(taskId);
+    }
+
+    /**
+     * 获取所有任务状态（可选，用于管理页面）
+     */
+    public Map<String, TaskStatus> getAllTaskStatus() {
+        return new HashMap<>(taskStatusMap);
     }
 
     /**
