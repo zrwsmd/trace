@@ -9,9 +9,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
+
 
 /**
  * @description:
@@ -91,46 +90,74 @@ public class OptimizedDatabaseService {
 
 
     /**
-     * 分割大SQL文件并并行导入
+     * 修复后的并行导入方法
      */
     public String loadWithParallel(String sqlFilePath, String databaseName,
                                    int threadCount) throws Exception {
 
         // 1. 分割SQL文件
         System.out.println("开始分割文件...");
-        List<String> splitFiles = splitSqlFile(sqlFilePath, 50000); // 每5万行一个文件
+        List<String> splitFiles = splitSqlFile(sqlFilePath, 50000);
 
         System.out.println("文件已分割为 " + splitFiles.size() + " 个部分");
 
-        // 2. 优化配置
+        // 2. 优化MySQL配置（只设置服务器端变量）
+        System.out.println("优化MySQL配置...");
         executeSqlCommand("SET GLOBAL foreign_key_checks=0");
         executeSqlCommand("SET GLOBAL unique_checks=0");
         executeSqlCommand("SET GLOBAL innodb_flush_log_at_trx_commit=2");
+        executeSqlCommand("SET GLOBAL max_allowed_packet=1073741824"); // 1GB
+
+        // 关键：设置超时参数（在服务器端）
+        executeSqlCommand("SET GLOBAL wait_timeout=28800");           // 8小时
+        executeSqlCommand("SET GLOBAL interactive_timeout=28800");    // 8小时
+        executeSqlCommand("SET GLOBAL net_read_timeout=3600");        // 1小时
+        executeSqlCommand("SET GLOBAL net_write_timeout=3600");       // 1小时
 
         try {
             // 3. 并行导入
             ExecutorService executor = Executors.newFixedThreadPool(threadCount);
             List<Future<String>> futures = new ArrayList<>();
 
+            int index = 0;
             for (String splitFile : splitFiles) {
-                futures.add(executor.submit(() -> importSingleFile(splitFile, databaseName)));
+                final int fileIndex = index++;
+                futures.add(executor.submit(() -> {
+                    System.out.println("开始导入第 " + fileIndex + " 个文件: " + splitFile);
+                    String result = importSingleFile(splitFile, databaseName);
+                    System.out.println("完成第 " + fileIndex + " 个文件");
+                    return result;
+                }));
             }
 
             // 等待所有任务完成
-            for (Future<String> future : futures) {
-                future.get();
+            for (int i = 0; i < futures.size(); i++) {
+                try {
+                    futures.get(i).get(2, TimeUnit.HOURS); // 每个文件最多等待2小时
+                } catch (TimeoutException e) {
+                    System.err.println("文件 " + i + " 导入超时");
+                    throw new RuntimeException("导入超时", e);
+                }
             }
 
             executor.shutdown();
+            executor.awaitTermination(4, TimeUnit.HOURS);
 
             // 4. 清理分割的文件
+            System.out.println("清理临时文件...");
             for (String splitFile : splitFiles) {
-                Files.deleteIfExists(Paths.get(splitFile));
+                try {
+                    Files.deleteIfExists(Paths.get(splitFile));
+                } catch (Exception e) {
+                    System.err.println("删除文件失败: " + splitFile);
+                }
             }
 
-            return "并行导入成功！";
+            return "并行导入成功！共导入 " + splitFiles.size() + " 个文件";
 
         } finally {
+            // 5. 恢复配置
+            System.out.println("恢复MySQL配置...");
             executeSqlCommand("SET GLOBAL foreign_key_checks=1");
             executeSqlCommand("SET GLOBAL unique_checks=1");
             executeSqlCommand("SET GLOBAL innodb_flush_log_at_trx_commit=1");
@@ -153,12 +180,31 @@ public class OptimizedDatabaseService {
             int fileIndex = 0;
             int lineCount = 0;
             BufferedWriter writer = null;
+            StringBuilder tableStructure = new StringBuilder();
+            boolean isInTableStructure = false;
 
             String line;
             while ((line = reader.readLine()) != null) {
 
+                // 保存表结构
+                if (line.trim().toUpperCase().startsWith("DROP TABLE") ||
+                        line.trim().toUpperCase().startsWith("CREATE TABLE") ||
+                        line.trim().toUpperCase().startsWith("ALTER TABLE")) {
+                    isInTableStructure = true;
+                }
+
+                if (isInTableStructure) {
+                    tableStructure.append(line).append("\n");
+                    if (line.trim().endsWith(";")) {
+                        isInTableStructure = false;
+                    }
+                    continue;
+                }
+
                 // 跳过注释和空行
-                if (line.trim().startsWith("--") || line.trim().isEmpty()) {
+                if (line.trim().startsWith("--") ||
+                        line.trim().startsWith("/*") ||
+                        line.trim().isEmpty()) {
                     continue;
                 }
 
@@ -172,6 +218,12 @@ public class OptimizedDatabaseService {
                     splitFiles.add(splitFileName);
                     writer = new BufferedWriter(
                             new OutputStreamWriter(new FileOutputStream(splitFileName), StandardCharsets.UTF_8));
+
+                    // 每个文件都包含表结构
+                    if (tableStructure.length() > 0) {
+                        writer.write(tableStructure.toString());
+                    }
+
                     fileIndex++;
                 }
 
@@ -189,32 +241,79 @@ public class OptimizedDatabaseService {
     }
 
     /**
-     * 导入单个文件
+     * 导入单个文件（移除客户端不支持的参数）
      */
     private String importSingleFile(String sqlFile, String databaseName) throws Exception {
         String sqlPath = sqlFile.replace("\\", "/");
 
+        // 修复：只使用客户端支持的参数
         String command = String.format(
-                "%smysql.exe -P 3307 -uroot -p123456 %s -e \"source %s\"",
-                MYSQL_DIR, databaseName, sqlPath
+                "%smysql.exe -P %d -u%s -p%s " +
+                        "--max_allowed_packet=1G " +          // 最大包1GB
+                        "--net_buffer_length=16384 " +        // 网络缓冲
+                        "%s -e \"source %s\"",
+                MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD,
+                databaseName, sqlPath
         );
 
-        Process process = Runtime.getRuntime().exec(command);
+        ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        // 读取输出
+        StringBuilder output = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                output.append(line).append("\n");
+                if (line.contains("ERROR")) {
+                    System.err.println("导入错误: " + line);
+                }
+            }
+        }
+
         int exitCode = process.waitFor();
 
         if (exitCode == 0) {
-            System.out.println("完成: " + sqlFile);
             return "success";
         } else {
-            throw new RuntimeException("导入失败: " + sqlFile);
+            throw new RuntimeException("导入失败: " + sqlFile +
+                    ", 退出码: " + exitCode +
+                    "\n输出: " + output.toString());
         }
     }
 
+    /**
+     * 执行SQL命令
+     */
     private void executeSqlCommand(String sql) throws Exception {
         String command = String.format(
-                "%smysql.exe -P 3307 -uroot -p123456 -e \"%s\"",
-                MYSQL_DIR, sql
+                "%smysql.exe -P %d -u%s -p%s -e \"%s\"",
+                MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, sql
         );
-        Runtime.getRuntime().exec(command).waitFor();
+
+        ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        // 读取输出
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("ERROR")) {
+                    System.err.println("执行SQL错误: " + line);
+                }
+            }
+        }
+
+        int exitCode = process.waitFor();
+
+        if (exitCode != 0) {
+            System.err.println("执行SQL失败: " + sql + ", 退出码: " + exitCode);
+        }
     }
 }
