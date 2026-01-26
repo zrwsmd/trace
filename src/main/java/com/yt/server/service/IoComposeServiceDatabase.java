@@ -955,7 +955,9 @@ public class IoComposeServiceDatabase {
                 }
             }
             //optimizedDatabaseService.backupOptimized(savePath, DATABASE_NAME, backUpTableList);
-            MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
+            //MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
+            String taskId = UUID.randomUUID().toString();
+            asyncDatabaseService.backupAsync(taskId, savePath, DATABASE_NAME, backUpTableList);
             logger.info("保存文件" + savePath + "成功");
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceSave");

@@ -16,7 +16,7 @@ Content-Type: application/json
   "type": "traceSave",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/trace_dump3.sql"
+    "path": "E:/trace-dump/trace_dump.sql"
   }
 }
 
