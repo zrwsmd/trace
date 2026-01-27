@@ -60,9 +60,6 @@ public class IoComposeServiceDatabase {
     private HandleWasteTimeService handleWasteTimeService;
 
     @Autowired
-    private OptimizedDatabaseService optimizedDatabaseService;
-
-    @Autowired
     private AsyncDatabaseService asyncDatabaseService;
 
     public static final int lagNum = 3000;
