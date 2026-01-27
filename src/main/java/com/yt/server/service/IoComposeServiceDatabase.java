@@ -62,6 +62,9 @@ public class IoComposeServiceDatabase {
     @Autowired
     private AsyncDatabaseService asyncDatabaseService;
 
+    @Autowired
+    private AsyncMySqlShellService asyncMySqlShellService;
+
     public static final int lagNum = 3000;
 
     // 16384减去首位2个固定桶
@@ -953,8 +956,8 @@ public class IoComposeServiceDatabase {
             }
             //optimizedDatabaseService.backupOptimized(savePath, DATABASE_NAME, backUpTableList);
             //MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
-
-            asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList);
+            asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList, 4);
+            //asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList);
             logger.info("保存文件" + savePath + "成功");
             responseVo.setTaskId(vsCodeReqParam.getTaskId());
             responseVo.setMessage("数据导出任务已启动，请使用taskId查询进度");
@@ -1351,8 +1354,8 @@ public class IoComposeServiceDatabase {
             //optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME);
-
+            //asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME);
+            asyncMySqlShellService.loadAsync(taskId, loadedPath, DATABASE_NAME, 4);
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();
             map.put("traceCfg", traceConfig);

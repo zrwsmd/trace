@@ -16,7 +16,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 /**
  * 使用 MySQL Shell (mysqlsh) 实现的高性能数据库导入导出服务
@@ -48,7 +47,7 @@ public class AsyncMySqlShellService {
     private static final Logger logger = LoggerFactory.getLogger(AsyncMySqlShellService.class);
 
     // MySQL Shell 路径 (需要安装 MySQL Shell: https://dev.mysql.com/downloads/shell/)
-    private static final String MYSQLSH_PATH = "D://mysql-shell//bin//mysqlsh.exe";
+    private static final String MYSQLSH_PATH = "E://mysqlshell//mysql-shell-9.6.0-windows-x86-64bit//bin//mysqlsh.exe";
 
     // 数据库连接配置
     private static final String MYSQL_HOST = "localhost";
@@ -65,10 +64,19 @@ public class AsyncMySqlShellService {
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
 
     /**
-     * 构建基础连接参数
+     * 构建导出用连接参数
+     * 格式: -u root -p123456 -P 3307
+     */
+    private String getDumpConnectionArgs() {
+        return String.format("-u %s -p%s -P %d",
+                MYSQL_USER, MYSQL_PASSWORD, MYSQL_PORT);
+    }
+
+    /**
+     * 构建导入用连接参数
      * 格式: -u root -p123456 -h localhost -P 3307
      */
-    private String getConnectionArgs() {
+    private String getLoadConnectionArgs() {
         return String.format("-u %s -p%s -h %s -P %d",
                 MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST, MYSQL_PORT);
     }
@@ -107,12 +115,12 @@ public class AsyncMySqlShellService {
 
             updateTaskStatus(taskId, "running", 5, "准备导出命令...");
 
-            // 构建 CLI 命令（使用实测有效的命令格式）
+            // 构建 CLI 命令（严格按照实测有效的命令格式）
             // 格式: mysqlsh -u root -p123456 -P 3307 -- util dump-schemas dbname
             // --outputUrl=path --threads=4
             StringBuilder command = new StringBuilder();
             command.append(String.format("\"%s\" %s -- util ",
-                    MYSQLSH_PATH, getConnectionArgs()));
+                    MYSQLSH_PATH, getDumpConnectionArgs()));
 
             if (tableNameList != null && !tableNameList.isEmpty()) {
                 // 导出指定表: util dump-tables dbname table1 table2 ...
@@ -127,14 +135,9 @@ public class AsyncMySqlShellService {
                 updateTaskStatus(taskId, "running", 10, "导出整个数据库...");
             }
 
-            // 添加输出路径和选项
+            // 添加输出路径和线程数
             String outputDir = savePath.replace("\\", "/");
             command.append(String.format("--outputUrl=%s --threads=%d", outputDir, threadCount));
-
-            // 添加压缩选项
-            if (USE_COMPRESSION) {
-                command.append(" --compression=zstd");
-            }
 
             logger.info("执行命令: {}", command);
             updateTaskStatus(taskId, "running", 15, "开始导出数据...");
@@ -231,17 +234,16 @@ public class AsyncMySqlShellService {
 
             updateTaskStatus(taskId, "running", 5, "准备导入命令...");
 
-            // 构建 CLI 命令（使用实测有效的命令格式）
+            // 构建 CLI 命令（严格按照实测有效的命令格式）
             // 格式: mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump path
             // --threads=4 --ignoreExistingObjects
             String inputPath = dumpPath.replace("\\", "/");
             String command = String.format(
-                    "\"%s\" %s -- util load-dump %s --threads=%d --ignoreExistingObjects --deferTableIndexes=all --schema=%s",
+                    "\"%s\" %s -- util load-dump %s --threads=%d --ignoreExistingObjects",
                     MYSQLSH_PATH,
-                    getConnectionArgs(),
+                    getLoadConnectionArgs(),
                     inputPath,
-                    threadCount,
-                    databaseName);
+                    threadCount);
 
             logger.info("执行命令: {}", command);
             updateTaskStatus(taskId, "running", 10, "开始导入数据...");
@@ -348,7 +350,7 @@ public class AsyncMySqlShellService {
             String command = String.format(
                     "\"%s\" %s --database=%s --sql -f \"%s\"",
                     MYSQLSH_PATH,
-                    getConnectionArgs(),
+                    getLoadConnectionArgs(),
                     databaseName,
                     sqlPath);
 
