@@ -42,6 +42,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @version: 1.0
  */
 @Service
+@Deprecated
 public class AsyncMySqlShellService {
 
     private static final Logger logger = LoggerFactory.getLogger(AsyncMySqlShellService.class);
