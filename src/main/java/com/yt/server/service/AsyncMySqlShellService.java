@@ -28,10 +28,12 @@ import java.util.stream.Collectors;
  * 4. 自动分块处理大表
  *
  * 导出
- * mysqlsh -u root -p123456  -P 3307 -- util dump-schemas trace --outputUrl=e:/mysqlshell/aa --threads=4
+ * mysqlsh -u root -p123456 -P 3307 -- util dump-schemas trace
+ * --outputUrl=e:/mysqlshell/aa --threads=4
  *
  * 导入
- * mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump e:/mysqlshell/aa --threads=4 --ignoreExistingObjects
+ * mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump
+ * e:/mysqlshell/aa --threads=4 --ignoreExistingObjects
  *
  * @description: MySQL Shell 异步数据库服务
  * @projectName: yt-java-server
@@ -63,10 +65,11 @@ public class AsyncMySqlShellService {
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
 
     /**
-     * 获取 MySQL 连接 URI
+     * 构建基础连接参数
+     * 格式: -u root -p123456 -h localhost -P 3307
      */
-    private String getConnectionUri() {
-        return String.format("mysql://%s:%s@%s:%d",
+    private String getConnectionArgs() {
+        return String.format("-u %s -p%s -h %s -P %d",
                 MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST, MYSQL_PORT);
     }
 
@@ -104,62 +107,40 @@ public class AsyncMySqlShellService {
 
             updateTaskStatus(taskId, "running", 5, "准备导出命令...");
 
-            // 构建 JavaScript 命令
-            StringBuilder jsCommand = new StringBuilder();
+            // 构建 CLI 命令（使用实测有效的命令格式）
+            // 格式: mysqlsh -u root -p123456 -P 3307 -- util dump-schemas dbname
+            // --outputUrl=path --threads=4
+            StringBuilder command = new StringBuilder();
+            command.append(String.format("\"%s\" %s -- util ",
+                    MYSQLSH_PATH, getConnectionArgs()));
 
             if (tableNameList != null && !tableNameList.isEmpty()) {
-                // 导出指定表
-                String tableList = tableNameList.stream()
-                        .map(t -> "\"" + databaseName + "." + t + "\"")
-                        .collect(Collectors.joining(", "));
-
-                jsCommand.append(String.format(
-                        "util.dumpTables(\"%s\", [%s], \"%s\", {" +
-                                "threads: %d, " +
-                                "compression: \"%s\", " +
-                                "bytesPerChunk: \"%dM\", " +
-                                "showProgress: true, " +
-                                "consistent: true" +
-                                "})",
-                        databaseName,
-                        tableNameList.stream().map(t -> "\"" + t + "\"").collect(Collectors.joining(", ")),
-                        savePath.replace("\\", "/"),
-                        threadCount,
-                        USE_COMPRESSION ? "zstd" : "none",
-                        BYTES_PER_CHUNK / (1024 * 1024)));
-
+                // 导出指定表: util dump-tables dbname table1 table2 ...
+                command.append("dump-tables ").append(databaseName).append(" ");
+                for (String tableName : tableNameList) {
+                    command.append(tableName).append(" ");
+                }
                 updateTaskStatus(taskId, "running", 10, "导出 " + tableNameList.size() + " 个表...");
             } else {
-                // 导出整个数据库
-                jsCommand.append(String.format(
-                        "util.dumpSchemas([\"%s\"], \"%s\", {" +
-                                "threads: %d, " +
-                                "compression: \"%s\", " +
-                                "bytesPerChunk: \"%dM\", " +
-                                "showProgress: true, " +
-                                "consistent: true" +
-                                "})",
-                        databaseName,
-                        savePath.replace("\\", "/"),
-                        threadCount,
-                        USE_COMPRESSION ? "zstd" : "none",
-                        BYTES_PER_CHUNK / (1024 * 1024)));
-
+                // 导出整个数据库: util dump-schemas dbname
+                command.append("dump-schemas ").append(databaseName).append(" ");
                 updateTaskStatus(taskId, "running", 10, "导出整个数据库...");
             }
 
-            // 构建完整命令
-            String command = String.format(
-                    "\"%s\" --uri=\"%s\" --js -e \"%s\"",
-                    MYSQLSH_PATH,
-                    getConnectionUri(),
-                    jsCommand.toString().replace("\"", "\\\""));
+            // 添加输出路径和选项
+            String outputDir = savePath.replace("\\", "/");
+            command.append(String.format("--outputUrl=%s --threads=%d", outputDir, threadCount));
 
-            logger.debug("执行命令: {}", command);
+            // 添加压缩选项
+            if (USE_COMPRESSION) {
+                command.append(" --compression=zstd");
+            }
+
+            logger.info("执行命令: {}", command);
             updateTaskStatus(taskId, "running", 15, "开始导出数据...");
 
             // 执行命令
-            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
+            ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command.toString());
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
@@ -197,9 +178,9 @@ public class AsyncMySqlShellService {
             }
 
             // 检查输出目录
-            File outputDir = new File(savePath);
-            if (outputDir.exists() && outputDir.isDirectory()) {
-                long totalSize = calculateDirectorySize(outputDir);
+            File resultDir = new File(savePath);
+            if (resultDir.exists() && resultDir.isDirectory()) {
+                long totalSize = calculateDirectorySize(resultDir);
                 long sizeMB = totalSize / (1024 * 1024);
                 updateTaskStatus(taskId, "success", 100,
                         String.format("导出完成！总大小: %d MB, 线程数: %d", sizeMB, threadCount));
@@ -250,30 +231,19 @@ public class AsyncMySqlShellService {
 
             updateTaskStatus(taskId, "running", 5, "准备导入命令...");
 
-            // 构建 JavaScript 命令
-            // deferTableIndexes: "all" - 延迟所有索引创建，导入完成后再创建
-            // ignoreExistingObjects: true - 忽略已存在的对象
-            // resetProgress: true - 重置进度（重新开始导入）
-            String jsCommand = String.format(
-                    "util.loadDump(\"%s\", {" +
-                            "threads: %d, " +
-                            "deferTableIndexes: \"all\", " +
-                            "ignoreExistingObjects: true, " +
-                            "showProgress: true, " +
-                            "schema: \"%s\"" +
-                            "})",
-                    dumpPath.replace("\\", "/"),
+            // 构建 CLI 命令（使用实测有效的命令格式）
+            // 格式: mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump path
+            // --threads=4 --ignoreExistingObjects
+            String inputPath = dumpPath.replace("\\", "/");
+            String command = String.format(
+                    "\"%s\" %s -- util load-dump %s --threads=%d --ignoreExistingObjects --deferTableIndexes=all --schema=%s",
+                    MYSQLSH_PATH,
+                    getConnectionArgs(),
+                    inputPath,
                     threadCount,
                     databaseName);
 
-            // 构建完整命令
-            String command = String.format(
-                    "\"%s\" --uri=\"%s\" --js -e \"%s\"",
-                    MYSQLSH_PATH,
-                    getConnectionUri(),
-                    jsCommand.replace("\"", "\\\""));
-
-            logger.debug("执行命令: {}", command);
+            logger.info("执行命令: {}", command);
             updateTaskStatus(taskId, "running", 10, "开始导入数据...");
 
             // 执行命令
@@ -373,15 +343,16 @@ public class AsyncMySqlShellService {
 
             updateTaskStatus(taskId, "running", 5, "准备导入...");
 
-            // MySQL Shell 可以直接执行 SQL 文件
+            // MySQL Shell 直接执行 SQL 文件（使用 CLI 风格）
+            String sqlPath = sqlFilePath.replace("\\", "/");
             String command = String.format(
-                    "\"%s\" --uri=\"%s/%s\" --sql -f \"%s\"",
+                    "\"%s\" %s --database=%s --sql -f \"%s\"",
                     MYSQLSH_PATH,
-                    getConnectionUri(),
+                    getConnectionArgs(),
                     databaseName,
-                    sqlFilePath.replace("\\", "/"));
+                    sqlPath);
 
-            logger.debug("执行命令: {}", command);
+            logger.info("执行命令: {}", command);
             updateTaskStatus(taskId, "running", 10, "开始导入数据...");
 
             ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
