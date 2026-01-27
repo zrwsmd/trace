@@ -20,13 +20,19 @@ import java.util.stream.Collectors;
 
 /**
  * 使用 MySQL Shell (mysqlsh) 实现的高性能数据库导入导出服务
- * 
+ *
  * MySQL Shell 相比传统 mysqldump/mysql 的优势:
  * 1. 多线程并行导出/导入，速度提升 4-10 倍
  * 2. 支持 zstd 压缩，减少磁盘占用
  * 3. 支持断点续传
  * 4. 自动分块处理大表
- * 
+ *
+ * 导出
+ * mysqlsh -u root -p123456  -P 3307 -- util dump-schemas trace --outputUrl=e:/mysqlshell/aa --threads=4
+ *
+ * 导入
+ * mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump e:/mysqlshell/aa --threads=4 --ignoreExistingObjects
+ *
  * @description: MySQL Shell 异步数据库服务
  * @projectName: yt-java-server
  * @see: com.yt.server.service
@@ -66,12 +72,12 @@ public class AsyncMySqlShellService {
 
     /**
      * 异步导出数据库（使用 MySQL Shell 的 util.dumpSchemas）
-     * 
+     *
      * 特点:
      * - 多线程并行导出
      * - 自动压缩
      * - 一致性快照
-     * 
+     *
      * @param taskId        任务ID
      * @param savePath      保存目录路径（注意：MySQL Shell 导出到目录，不是单个文件）
      * @param databaseName  数据库名
@@ -214,12 +220,12 @@ public class AsyncMySqlShellService {
 
     /**
      * 异步导入数据库（使用 MySQL Shell 的 util.loadDump）
-     * 
+     *
      * 特点:
      * - 多线程并行导入
      * - 延迟创建索引（先导入数据，后创建索引，大幅提升速度）
      * - 支持断点续传
-     * 
+     *
      * @param taskId       任务ID
      * @param dumpPath     dump 目录路径（由 dumpAsync 生成）
      * @param databaseName 目标数据库名
@@ -328,7 +334,7 @@ public class AsyncMySqlShellService {
     /**
      * 导出为单个 SQL 文件（兼容传统格式）
      * 使用 util.dumpSchemas 配合 ocimds: false 选项
-     * 
+     *
      * @param taskId        任务ID
      * @param savePath      保存目录路径
      * @param databaseName  数据库名
@@ -345,7 +351,7 @@ public class AsyncMySqlShellService {
     /**
      * 从传统 SQL 文件导入（向后兼容）
      * 对于传统 SQL 文件，仍使用 mysql 客户端，但增加优化参数
-     * 
+     *
      * @param taskId       任务ID
      * @param sqlFilePath  SQL 文件路径
      * @param databaseName 数据库名
