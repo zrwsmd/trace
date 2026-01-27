@@ -62,8 +62,8 @@ public class IoComposeServiceDatabase {
     @Autowired
     private AsyncDatabaseService asyncDatabaseService;
 
-//    @Autowired
-//    private AsyncMySqlShellService asyncMySqlShellService;
+    // @Autowired
+    // private AsyncMySqlShellService asyncMySqlShellService;
 
     public static final int lagNum = 3000;
 
@@ -74,8 +74,8 @@ public class IoComposeServiceDatabase {
 
     public static final String DOMAIN_PREFIX = "com.yt.server.entity.";
 
-    public static final String[] DEFAULT_TABLE = new String[]{"table_num_info", "trace_field_meta",
-            "trace_table_related_info", "trace_timestamp_statistics"};
+    public static final String[] DEFAULT_TABLE = new String[] { "table_num_info", "trace_field_meta",
+            "trace_table_related_info", "trace_timestamp_statistics" };
 
     public static final String DATABASE_NAME = "trace";
 
@@ -103,7 +103,7 @@ public class IoComposeServiceDatabase {
         // downsamplingRate.add(16);
     }
 
-    public static Integer[] data = new Integer[]{4, 8, 32, 64, 128, 256, 512};
+    public static Integer[] data = new Integer[] { 4, 8, 32, 64, 128, 256, 512 };
 
     Map<String, Integer> perMap = new ConcurrentHashMap<>();
 
@@ -402,7 +402,7 @@ public class IoComposeServiceDatabase {
                         jdbcTemplate.update(downsamplingSql);
                     }
                 }
-                Object[] param = new Object[]{traceId};
+                Object[] param = new Object[] { traceId };
                 String traceFieldMetaDeleteSql = "DELETE FROM trace_field_meta WHERE traceId=? ";
                 jdbcTemplate.update(traceFieldMetaDeleteSql, param);
             }
@@ -491,8 +491,8 @@ public class IoComposeServiceDatabase {
     }
 
     private MultiValueMap parseLiveData(Long reqStartTimestamp, Long reqEndTimestamp, Integer reqNum,
-                                        String downsamplingTableName, String currentTableName, List<String> filterVarList,
-                                        List<Map<String, String>> mapList) throws ClassNotFoundException, NoSuchFieldException,
+            String downsamplingTableName, String currentTableName, List<String> filterVarList,
+            List<Map<String, String>> mapList) throws ClassNotFoundException, NoSuchFieldException,
             IllegalAccessException, ExecutionException, InterruptedException {
         final MultiValueMap allMultiValueMap = new MultiValueMap();
         try {
@@ -648,8 +648,8 @@ public class IoComposeServiceDatabase {
     }
 
     private MultiValueMap handleFromFull(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
-                                         List<Map<String, String>> mapList, MultiValueMap allMultiValueMap, String fieldName,
-                                         Set<String> queryTableList)
+            List<Map<String, String>> mapList, MultiValueMap allMultiValueMap, String fieldName,
+            Set<String> queryTableList)
             throws InterruptedException, ExecutionException, NoSuchFieldException, IllegalAccessException {
         // 查询原表
         List<Future<MultiValueMap>> resultList = new ArrayList<>();
@@ -670,8 +670,8 @@ public class IoComposeServiceDatabase {
     }
 
     private void handleDownTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
-                                    List<Map<String, String>> mapList, String fieldName,
-                                    MultiValueMap allMultiValueMap, int per, int closestRate, List<String> filterVarList)
+            List<Map<String, String>> mapList, String fieldName,
+            MultiValueMap allMultiValueMap, int per, int closestRate, List<String> filterVarList)
             throws NoSuchFieldException, IllegalAccessException, ExecutionException, InterruptedException {
         Long beginLeftStartTimestamp = null;
         Long endLeftStartTimestamp = null;
@@ -718,8 +718,8 @@ public class IoComposeServiceDatabase {
     }
 
     private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName,
-                                          List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate,
-                                          String varName)
+            List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate,
+            String varName)
             throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
         /**
          * 小于一个任务周期就没必要请求了,但是注意
@@ -810,8 +810,8 @@ public class IoComposeServiceDatabase {
     }
 
     private void handleFullTailData(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
-                                    List<Map<String, String>> mapList, String fieldName,
-                                    MultiValueMap allMultiValueMap, int per)
+            List<Map<String, String>> mapList, String fieldName,
+            MultiValueMap allMultiValueMap, int per)
             throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
         Long beginLeftStartTimestamp = null;
         Long endLeftStartTimestamp = null;
@@ -954,10 +954,18 @@ public class IoComposeServiceDatabase {
                             .concat("_").concat(String.valueOf(downRate)));
                 }
             }
-            //MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
-            //asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList, 4);
-            asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList);
-            logger.info("保存文件" + savePath + "成功");
+            // MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
+            // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
+            // DATABASE_NAME, backUpTableList, 4);
+            asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList)
+                    .whenComplete((result, ex) -> {
+                        if (ex == null && "success".equals(result)) {
+                            logger.info("trace async save successfully executed");
+                        } else {
+                            logger.error("trace async save failed: " + (ex != null ? ex.getMessage() : result));
+                        }
+                    });
+            logger.info("保存文件" + savePath + "成功(异步任务已提交)");
             responseVo.setTaskId(vsCodeReqParam.getTaskId());
             responseVo.setMessage("数据导出任务已启动，请使用taskId查询进度");
             responseVo.setResponseId(requestId);
@@ -968,7 +976,6 @@ public class IoComposeServiceDatabase {
             logger.error("trace save 异常,报错信息为: " + e);
             return responseVo;
         }
-        logger.info("trace async save successfully executed");
         return responseVo;
 
     }
@@ -1272,8 +1279,8 @@ public class IoComposeServiceDatabase {
     }
 
     public static Pair<List<UniPoint>, Integer> handleBigDownsampling(List<UniPoint> downsamplingDataList,
-                                                                      String varName, float gap, Connection connection, int parentDownsamplingRate,
-                                                                      String parentDownsamplingTableName) throws ClassNotFoundException, SQLException {
+            String varName, float gap, Connection connection, int parentDownsamplingRate,
+            String parentDownsamplingTableName) throws ClassNotFoundException, SQLException {
         int bucketSize = (int) (downsamplingDataList.size() / gap);
         String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_")
                 .concat(String.valueOf(gap * parentDownsamplingRate));
@@ -1314,7 +1321,7 @@ public class IoComposeServiceDatabase {
         for (Long reqTimestamp : reqTimestampList) {
             reqTimestamp = BaseUtils.getCircleStamp(reqTimestamp, getConfigPer());
             int bucket = chooseBucket(reqTimestamp);
-            Object[] regionParam = new Object[]{reqTimestamp};
+            Object[] regionParam = new Object[] { reqTimestamp };
             String sql = "select " + allFieldName + "  from "
                     + currentTraceTableName.concat("_").concat(String.valueOf(bucket)) + " where id=?";
             List<Map<String, Object>> list = jdbcTemplate.queryForList(sql, regionParam);
@@ -1349,12 +1356,19 @@ public class IoComposeServiceDatabase {
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
             }
             // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
-            //optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
-            //optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
+            // optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
+            // optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME);
-            //asyncMySqlShellService.loadAsync(taskId, loadedPath, DATABASE_NAME, 4);
+            // 启动异步任务
+            asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME).whenComplete((result, ex) -> {
+                if (ex == null && "success".equals(result)) {
+                    logger.info("trace load successfully executed");
+                } else {
+                    logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
+                }
+            });
+            // asyncMySqlShellService.loadAsync(taskId, loadedPath, DATABASE_NAME, 4);
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();
             map.put("traceCfg", traceConfig);
@@ -1371,7 +1385,6 @@ public class IoComposeServiceDatabase {
             logger.error("trace load 异常,报错信息为: " + e);
             return responseVo;
         }
-        logger.info("trace load successfully executed");
         return responseVo;
     }
 
