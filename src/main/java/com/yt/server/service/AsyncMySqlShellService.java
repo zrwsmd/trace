@@ -30,6 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * mysqlsh -u root -p123456 -P 3307 -- util dump-schemas trace
  * --outputUrl=e:/mysqlshell/aa --threads=4
  *
+ * 导出指定表
+ * mysqlsh -u root -p123456 -P 3307 -- util dump-tables trace
+ * table_num_info trace158 trace158_0 --outputUrl=e:/mysqlshell/cc --threads=4
+ *
  * 导入
  * mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump
  * e:/mysqlshell/aa --threads=4 --ignoreExistingObjects
