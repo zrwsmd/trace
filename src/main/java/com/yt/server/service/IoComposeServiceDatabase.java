@@ -967,7 +967,7 @@ public class IoComposeServiceDatabase {
                     });
             logger.info("保存文件" + savePath + "成功(异步任务已提交)");
             responseVo.setTaskId(vsCodeReqParam.getTaskId());
-            responseVo.setMessage("数据导出任务已启动，请使用taskId查询进度");
+            responseVo.setMessage("数据导出任务已启动，请使用GET http://localhost:17777/io/task/status/{taskId}查询进度");
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceSave");
             responseVo.setRet(true);
@@ -1374,7 +1374,7 @@ public class IoComposeServiceDatabase {
             map.put("traceCfg", traceConfig);
             respJson.put("rData", map);
             responseVo.setTaskId(vsCodeReqParam.getTaskId());
-            responseVo.setMessage("数据导入任务已启动，请使用taskId查询进度");
+            responseVo.setMessage("数据导入任务已启动，请使用GET http://localhost:17777/io/task/status/{taskId}查询进度");
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceLoad");
             responseVo.setRet(true);
