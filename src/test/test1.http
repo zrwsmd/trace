@@ -14,9 +14,10 @@ Content-Type: application/json
 {
   "requestId": 123456789,
   "type": "traceSave",
+  "binPath": "D://trace-mysql//bin//",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/backup_task_2"
+    "path": "E:/trace-dump/backup_task_5"
   }
 }
 
@@ -27,9 +28,10 @@ Content-Type: application/json
 {
   "requestId": 123456790,
   "type": "traceLoad",
+  "binPath": "D://trace-mysql//bin//",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/backup_task_2"
+    "path": "E:/trace-dump/backup_task_5"
   }
 }
 

@@ -957,7 +957,9 @@ public class IoComposeServiceDatabase {
             // MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
             // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
             // DATABASE_NAME, backUpTableList, 4);
-            asyncDatabaseMultiThreadService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList)
+            asyncDatabaseMultiThreadService
+                    .backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
+                            vsCodeReqParam.getBinPath())
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async save successfully executed");
@@ -1357,13 +1359,14 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME).whenComplete((result, ex) -> {
-                if (ex == null && "success".equals(result)) {
-                    logger.info("trace async load successfully executed");
-                } else {
-                    logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
-                }
-            });
+            asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME, vsCodeReqParam.getBinPath())
+                    .whenComplete((result, ex) -> {
+                        if (ex == null && "success".equals(result)) {
+                            logger.info("trace async load successfully executed");
+                        } else {
+                            logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
+                        }
+                    });
             // asyncMySqlShellService.loadAsync(taskId, loadedPath, DATABASE_NAME, 4);
             JSONObject respJson = new JSONObject();
             Map<String, Object> map = new HashMap<>();

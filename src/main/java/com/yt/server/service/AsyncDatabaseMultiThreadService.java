@@ -24,14 +24,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class AsyncDatabaseMultiThreadService {
-    private static final String MYSQL_DIR = "D://trace-mysql//bin//";
+
     private static final int MYSQL_PORT = 3307;
     private static final String MYSQL_USER = "root";
     private static final String MYSQL_PASSWORD = "123456";
 
     // 存储任务状态
     private final Map<String, AsyncDatabaseService.TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
-    private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseService.class);
+    private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
 
     /**
      * 异步导入（立即返回任务ID）
@@ -40,7 +40,7 @@ public class AsyncDatabaseMultiThreadService {
      * 异步导入（支持并行导入）
      */
     @Async
-    public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName) {
+    public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化导入任务...");
@@ -84,7 +84,7 @@ public class AsyncDatabaseMultiThreadService {
             for (File sqlFile : sqlFiles) {
                 executor.submit(() -> {
                     try {
-                        importTable(databaseName, sqlFile.getAbsolutePath());
+                        importTable(databaseName, sqlFile.getAbsolutePath(), binPath);
                     } catch (Exception e) {
                         errorCount.incrementAndGet();
                         errors.add(sqlFile.getName() + ": " + e.getMessage());
@@ -127,7 +127,7 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 单个文件导入
      */
-    private void importTable(String databaseName, String sqlPath) throws Exception {
+    private void importTable(String databaseName, String sqlPath, String binPath) throws Exception {
         // 注意：Windows下路径分隔符替换
         String normalizedSqlPath = sqlPath.replace("\\", "/");
 
@@ -143,10 +143,13 @@ public class AsyncDatabaseMultiThreadService {
                 "%smysql.exe -P %d -u%s -p%s " +
                         "--default-character-set=utf8mb4 " +
                         "%s -e \"%s\"",
-                MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD,
+                binPath, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD,
                 databaseName, sqlCommand);
 
-        //command:  e.g D://trace-mysql//bin//mysql.exe -P 3307 -uroot -p123456 --default-character-set=utf8mb4 trace -e "SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET SQL_LOG_BIN=0; SOURCE E:/trace-dump/backup_task_2/trace158_1.sql;"
+        // command: e.g D://trace-mysql//bin//mysql.exe -P 3307 -uroot -p123456
+        // --default-character-set=utf8mb4 trace -e "SET FOREIGN_KEY_CHECKS=0; SET
+        // UNIQUE_CHECKS=0; SET SQL_LOG_BIN=0; SOURCE
+        // E:/trace-dump/backup_task_2/trace158_1.sql;"
         ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
         pb.redirectErrorStream(true);
         Process process = pb.start();
@@ -206,11 +209,11 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 获取数据库所有表名
      */
-    private List<String> getAllTables(String databaseName) throws Exception {
+    private List<String> getAllTables(String databaseName, String binPath) throws Exception {
         List<String> tables = new ArrayList<>();
         String command = String.format(
                 "%smysql.exe -P %d -u%s -p%s -D %s -e \"SHOW TABLES;\"",
-                MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, databaseName);
+                binPath, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, databaseName);
 
         ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
         pb.redirectErrorStream(true);
@@ -237,10 +240,10 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 执行SQL命令
      */
-    private void executeSqlCommand(String sql) throws Exception {
+    private void executeSqlCommand(String sql, String binPath) throws Exception {
         String command = String.format(
                 "%smysql.exe -P %d -u%s -p%s -e \"%s\"",
-                MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, sql);
+                binPath, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, sql);
 
         Process process = Runtime.getRuntime().exec(command);
         process.waitFor();
@@ -254,7 +257,7 @@ public class AsyncDatabaseMultiThreadService {
      */
     @Async
     public CompletableFuture<String> backupAsync(String taskId, String savePath,
-            String databaseName, Collection<String> tableNameList) {
+                                                 String databaseName, Collection<String> tableNameList, String binPath) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化导出任务...");
@@ -276,7 +279,7 @@ public class AsyncDatabaseMultiThreadService {
                 tablesToExport = new ArrayList<>(tableNameList);
             } else {
                 updateTaskStatus(taskId, "running", 2, "获取表列表...");
-                tablesToExport = getAllTables(databaseName);
+                tablesToExport = getAllTables(databaseName, binPath);
             }
 
             if (tablesToExport.isEmpty()) {
@@ -300,7 +303,7 @@ public class AsyncDatabaseMultiThreadService {
             for (String tableName : tablesToExport) {
                 executor.submit(() -> {
                     try {
-                        exportTable(databaseName, tableName, saveDir.getAbsolutePath());
+                        exportTable(databaseName, tableName, saveDir.getAbsolutePath(), binPath);
                     } catch (Exception e) {
                         errorCount.incrementAndGet();
                         errors.add(tableName + ": " + e.getMessage());
@@ -344,12 +347,12 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 导出单张表
      */
-    private void exportTable(String databaseName, String tableName, String saveDir) throws Exception {
+    private void exportTable(String databaseName, String tableName, String saveDir, String binPath) throws Exception {
         String fileName = tableName + ".sql";
         File outputFile = new File(saveDir, fileName);
 
         StringBuilder command = new StringBuilder();
-        command.append(MYSQL_DIR).append("mysqldump.exe ");
+        command.append(binPath).append("mysqldump.exe ");
         command.append("-P ").append(MYSQL_PORT).append(" ");
         command.append("-u").append(MYSQL_USER).append(" ");
         command.append("-p").append(MYSQL_PASSWORD).append(" ");

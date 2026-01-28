@@ -28,6 +28,16 @@ public class VsCodeReqParam extends RequestParameter {
 
     private String taskId;
 
+    private String binPath;
+
+    public String getBinPath() {
+        return binPath;
+    }
+
+    public void setBinPath(String binPath) {
+        this.binPath = binPath;
+    }
+
     public String getTaskId() {
         return taskId;
     }
