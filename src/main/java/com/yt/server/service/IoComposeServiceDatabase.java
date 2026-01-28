@@ -62,8 +62,8 @@ public class IoComposeServiceDatabase {
     @Autowired
     private AsyncDatabaseService asyncDatabaseService;
 
-    // @Autowired
-    // private AsyncMySqlShellService asyncMySqlShellService;
+    @Autowired
+    private AsyncDatabaseMultiThreadService asyncDatabaseMultiThreadService;
 
     public static final int lagNum = 3000;
 
@@ -957,7 +957,7 @@ public class IoComposeServiceDatabase {
             // MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
             // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
             // DATABASE_NAME, backUpTableList, 4);
-            asyncDatabaseService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList)
+            asyncDatabaseMultiThreadService.backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async save successfully executed");
@@ -1355,13 +1355,9 @@ public class IoComposeServiceDatabase {
                 responseVo.setRet(false);
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
             }
-            // MysqlUtils.loadNio(loadedPath, DATABASE_NAME);
-            // optimizedDatabaseService.loadWithParallel(loadedPath, DATABASE_NAME, 4);
-            // optimizedDatabaseService.loadOptimizedSequential(loadedPath, DATABASE_NAME);
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            // 启动异步任务
-            asyncDatabaseService.loadAsync(taskId, loadedPath, DATABASE_NAME).whenComplete((result, ex) -> {
+            asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME).whenComplete((result, ex) -> {
                 if (ex == null && "success".equals(result)) {
                     logger.info("trace async load successfully executed");
                 } else {

@@ -3,6 +3,7 @@ package com.yt.server.controller;
 import com.yt.server.entity.RequestParameter;
 import com.yt.server.entity.VsCodeReqParam;
 import com.yt.server.entity.VsCodeRespVo;
+import com.yt.server.service.AsyncDatabaseMultiThreadService;
 import com.yt.server.service.AsyncDatabaseService;
 import com.yt.server.service.IoComposeServiceDatabase;
 import org.apache.commons.collections.map.MultiValueMap;
@@ -29,7 +30,7 @@ public class IoController {
     private IoComposeServiceDatabase ioComposeServiceDatabase;
 
     @Autowired
-    private AsyncDatabaseService asyncDatabaseService;
+    private AsyncDatabaseMultiThreadService asyncDatabaseMultiThreadService;
 
 
     /**
@@ -126,7 +127,7 @@ public class IoController {
     public Map<String, Object> getTaskStatus(@PathVariable String taskId) {
         Map<String, Object> result = new HashMap<>();
 
-        AsyncDatabaseService.TaskStatus status = asyncDatabaseService.getTaskStatus(taskId);
+        AsyncDatabaseService.TaskStatus status = asyncDatabaseMultiThreadService.getTaskStatus(taskId);
 
         if (status == null) {
             result.put("success", false);
@@ -150,7 +151,7 @@ public class IoController {
         Map<String, String> result = new HashMap<>();
 
         try {
-            asyncDatabaseService.clearTaskStatus(taskId);
+            asyncDatabaseMultiThreadService.clearTaskStatus(taskId);
             result.put("success", "true");
             result.put("message", "任务状态已清除");
         } catch (Exception e) {
@@ -168,7 +169,7 @@ public class IoController {
     public Map<String, Object> getAllTaskStatus() {
         Map<String, Object> result = new HashMap<>();
         result.put("success", true);
-        result.put("tasks", asyncDatabaseService.getAllTaskStatus());
+        result.put("tasks", asyncDatabaseMultiThreadService.getAllTaskStatus());
         return result;
     }
 
