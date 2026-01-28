@@ -91,11 +91,12 @@ public class AsyncDatabaseMultiThreadService {
                         logger.error("导入文件 " + sqlFile.getName() + " 失败", e);
                     } finally {
                         int completed = completedCount.incrementAndGet();
-                        latch.countDown();
 
                         int progress = 10 + (int) ((completed / (double) totalFiles) * 85);
                         updateTaskStatus(taskId, "running", progress,
                                 String.format("导入进度: %d/%d (失败: %d)", completed, totalFiles, errorCount.get()));
+
+                        latch.countDown();
                     }
                 });
             }
@@ -170,7 +171,8 @@ public class AsyncDatabaseMultiThreadService {
      * 更新任务状态
      */
     private void updateTaskStatus(String taskId, String status, int progress, String message) {
-        AsyncDatabaseService.TaskStatus taskStatus = taskStatusMap.computeIfAbsent(taskId, k -> new AsyncDatabaseService.TaskStatus());
+        AsyncDatabaseService.TaskStatus taskStatus = taskStatusMap.computeIfAbsent(taskId,
+                k -> new AsyncDatabaseService.TaskStatus());
         taskStatus.setStatus(status);
         taskStatus.setProgress(progress);
         taskStatus.setMessage(message);
@@ -251,7 +253,7 @@ public class AsyncDatabaseMultiThreadService {
      */
     @Async
     public CompletableFuture<String> backupAsync(String taskId, String savePath,
-                                                 String databaseName, Collection<String> tableNameList) {
+            String databaseName, Collection<String> tableNameList) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化导出任务...");
@@ -304,12 +306,13 @@ public class AsyncDatabaseMultiThreadService {
                         logger.error("导出表 " + tableName + " 失败", e);
                     } finally {
                         int completed = completedCount.incrementAndGet();
-                        latch.countDown();
 
                         // 更新进度 (5% - 95%)
                         int progress = 5 + (int) ((completed / (double) totalTables) * 90);
                         updateTaskStatus(taskId, "running", progress,
                                 String.format("导出进度: %d/%d (失败: %d)", completed, totalTables, errorCount.get()));
+
+                        latch.countDown();
                     }
                 });
             }
