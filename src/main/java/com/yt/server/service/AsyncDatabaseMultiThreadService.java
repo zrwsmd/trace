@@ -146,6 +146,7 @@ public class AsyncDatabaseMultiThreadService {
                 MYSQL_DIR, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD,
                 databaseName, sqlCommand);
 
+        //command:  e.g D://trace-mysql//bin//mysql.exe -P 3307 -uroot -p123456 --default-character-set=utf8mb4 trace -e "SET FOREIGN_KEY_CHECKS=0; SET UNIQUE_CHECKS=0; SET SQL_LOG_BIN=0; SOURCE E:/trace-dump/backup_task_2/trace158_1.sql;"
         ProcessBuilder pb = new ProcessBuilder("cmd.exe", "/c", command);
         pb.redirectErrorStream(true);
         Process process = pb.start();
