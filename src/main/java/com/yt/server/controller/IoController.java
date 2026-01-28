@@ -4,7 +4,6 @@ import com.yt.server.entity.RequestParameter;
 import com.yt.server.entity.VsCodeReqParam;
 import com.yt.server.entity.VsCodeRespVo;
 import com.yt.server.service.AsyncDatabaseMultiThreadService;
-import com.yt.server.service.AsyncDatabaseService;
 import com.yt.server.service.IoComposeServiceDatabase;
 import org.apache.commons.collections.map.MultiValueMap;
 import org.slf4j.Logger;
@@ -127,7 +126,7 @@ public class IoController {
     public Map<String, Object> getTaskStatus(@PathVariable String taskId) {
         Map<String, Object> result = new HashMap<>();
 
-        AsyncDatabaseService.TaskStatus status = asyncDatabaseMultiThreadService.getTaskStatus(taskId);
+        AsyncDatabaseMultiThreadService.TaskStatus status = asyncDatabaseMultiThreadService.getTaskStatus(taskId);
 
         if (status == null) {
             result.put("success", false);

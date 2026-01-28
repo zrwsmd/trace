@@ -30,7 +30,7 @@ public class AsyncDatabaseMultiThreadService {
     private static final String MYSQL_PASSWORD = "123456";
 
     // 存储任务状态
-    private final Map<String, AsyncDatabaseService.TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
+    private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
 
     /**
@@ -175,8 +175,8 @@ public class AsyncDatabaseMultiThreadService {
      * 更新任务状态
      */
     private void updateTaskStatus(String taskId, String status, int progress, String message) {
-        AsyncDatabaseService.TaskStatus taskStatus = taskStatusMap.computeIfAbsent(taskId,
-                k -> new AsyncDatabaseService.TaskStatus());
+        TaskStatus taskStatus = taskStatusMap.computeIfAbsent(taskId,
+                k -> new TaskStatus());
         taskStatus.setStatus(status);
         taskStatus.setProgress(progress);
         taskStatus.setMessage(message);
@@ -188,7 +188,7 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 获取任务状态
      */
-    public AsyncDatabaseService.TaskStatus getTaskStatus(String taskId) {
+    public TaskStatus getTaskStatus(String taskId) {
         return taskStatusMap.get(taskId);
     }
 
@@ -202,7 +202,7 @@ public class AsyncDatabaseMultiThreadService {
     /**
      * 获取所有任务状态（可选，用于管理页面）
      */
-    public Map<String, AsyncDatabaseService.TaskStatus> getAllTaskStatus() {
+    public Map<String, TaskStatus> getAllTaskStatus() {
         return new HashMap<>(taskStatusMap);
     }
 
