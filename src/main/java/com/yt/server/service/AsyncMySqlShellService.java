@@ -19,21 +19,21 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 使用 MySQL Shell (mysqlsh) 实现的高性能数据库导入导出服务
- *
+ * <p>
  * MySQL Shell 相比传统 mysqldump/mysql 的优势:
  * 1. 多线程并行导出/导入，速度提升 4-10 倍
  * 2. 支持 zstd 压缩，减少磁盘占用
  * 3. 支持断点续传
  * 4. 自动分块处理大表
- *
+ * <p>
  * 导出
  * mysqlsh -u root -p123456 -P 3307 -- util dump-schemas trace
  * --outputUrl=e:/mysqlshell/aa --threads=4
- *
- * 导出指定表
+ * <p>
+ * 导出指定表(table_num_info trace158 trace158_0,这3个代表表名，trace代表数据库名)
  * mysqlsh -u root -p123456 -P 3307 -- util dump-tables trace
  * table_num_info trace158 trace158_0 --outputUrl=e:/mysqlshell/cc --threads=4
- *
+ * <p>
  * 导入
  * mysqlsh -u root -p123456 -h localhost -P 3307 -- util load-dump
  * e:/mysqlshell/aa --threads=4 --ignoreExistingObjects
@@ -88,7 +88,7 @@ public class AsyncMySqlShellService {
 
     /**
      * 异步导出数据库（使用 MySQL Shell 的 util.dumpSchemas）
-     *
+     * <p>
      * 特点:
      * - 多线程并行导出
      * - 自动压缩
@@ -103,8 +103,8 @@ public class AsyncMySqlShellService {
      */
     @Async
     public CompletableFuture<String> dumpAsync(String taskId, String savePath,
-            String databaseName, Collection<String> tableNameList,
-            Integer threads) {
+                                               String databaseName, Collection<String> tableNameList,
+                                               Integer threads) {
         try {
             updateTaskStatus(taskId, "running", 0, "开始导出...");
             logger.info("开始使用 MySQL Shell 导出数据库: {}", databaseName);
@@ -209,7 +209,7 @@ public class AsyncMySqlShellService {
 
     /**
      * 异步导入数据库（使用 MySQL Shell 的 util.loadDump）
-     *
+     * <p>
      * 特点:
      * - 多线程并行导入
      * - 延迟创建索引（先导入数据，后创建索引，大幅提升速度）
@@ -223,7 +223,7 @@ public class AsyncMySqlShellService {
      */
     @Async
     public CompletableFuture<String> loadAsync(String taskId, String dumpPath,
-            String databaseName, Integer threads) {
+                                               String databaseName, Integer threads) {
         try {
             updateTaskStatus(taskId, "running", 0, "开始导入...");
             logger.info("开始使用 MySQL Shell 导入数据到: {}", databaseName);
@@ -320,7 +320,7 @@ public class AsyncMySqlShellService {
      */
     @Async
     public CompletableFuture<String> dumpToSqlAsync(String taskId, String savePath,
-            String databaseName, Collection<String> tableNameList) {
+                                                    String databaseName, Collection<String> tableNameList) {
         // 使用默认线程数导出，然后可以选择是否合并
         return dumpAsync(taskId, savePath, databaseName, tableNameList, DEFAULT_THREADS);
     }
@@ -336,7 +336,7 @@ public class AsyncMySqlShellService {
      */
     @Async
     public CompletableFuture<String> loadFromSqlAsync(String taskId, String sqlFilePath,
-            String databaseName) {
+                                                      String databaseName) {
         try {
             updateTaskStatus(taskId, "running", 0, "开始导入 SQL 文件...");
             logger.info("使用 MySQL Shell 导入 SQL 文件: {}", sqlFilePath);
