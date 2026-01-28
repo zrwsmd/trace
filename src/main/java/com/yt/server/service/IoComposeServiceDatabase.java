@@ -920,6 +920,15 @@ public class IoComposeServiceDatabase {
     public VsCodeRespVo traceSave(VsCodeReqParam vsCodeReqParam) {
         Long requestId = vsCodeReqParam.getRequestId();
         VsCodeRespVo responseVo = new VsCodeRespVo();
+        String binPath = vsCodeReqParam.getBinPath();
+        if (binPath == null || binPath.isEmpty()) {
+            logger.error("缺少bin路径的信息!!");
+            responseVo.setRet(false);
+            responseVo.setResponseId(requestId);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("缺少bin路径的信息!!");
+            return responseVo;
+        }
         Long traceId = 0L;
         String savePath = "";
         try {
@@ -959,7 +968,7 @@ public class IoComposeServiceDatabase {
             // DATABASE_NAME, backUpTableList, 4);
             asyncDatabaseMultiThreadService
                     .backupAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
-                            vsCodeReqParam.getBinPath())
+                            binPath)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async save successfully executed");
@@ -1336,6 +1345,15 @@ public class IoComposeServiceDatabase {
     public VsCodeRespVo traceLoad(VsCodeReqParam vsCodeReqParam) {
         Long requestId = vsCodeReqParam.getRequestId();
         VsCodeRespVo responseVo = new VsCodeRespVo();
+        String binPath = vsCodeReqParam.getBinPath();
+        if (binPath == null || binPath.isEmpty()) {
+            logger.error("缺少bin路径的信息!!");
+            responseVo.setRet(false);
+            responseVo.setResponseId(requestId);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("缺少bin路径的信息!!");
+            return responseVo;
+        }
         Long traceId = 0L;
         String loadedPath = "";
         try {
@@ -1359,7 +1377,7 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME, vsCodeReqParam.getBinPath())
+            asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME, binPath)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
