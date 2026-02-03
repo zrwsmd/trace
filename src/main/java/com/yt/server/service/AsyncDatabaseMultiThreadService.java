@@ -24,8 +24,8 @@ public class AsyncDatabaseMultiThreadService {
     private static final String MYSQL_USER = "root";
     private static final String MYSQL_PASSWORD = "123456";
 
-    private static final String ENCRYPTION_KEY = "qwermnbv";
-    private static final String ENCRYPTED_FILE_EXTENSION = ".dbenc";
+    private static final String ENCRYPTION_KEY = "youtak%_trace";
+    private static final String ENCRYPTED_FILE_EXTENSION = ".trace";
 
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
