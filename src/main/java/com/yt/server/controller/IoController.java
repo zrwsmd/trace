@@ -111,6 +111,14 @@ public class IoController {
 
     }
 
+    @PostMapping("/traceSaveEnc")
+    public VsCodeRespVo traceSaveEnc(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
+        String taskId = UUID.randomUUID().toString();
+        vsCodeReqParam.setTaskId(taskId);
+        return ioComposeServiceDatabase.traceSaveEnc(vsCodeReqParam);
+
+    }
+
     @PostMapping("/traceLoad")
     public VsCodeRespVo traceLoad(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
         String taskId = UUID.randomUUID().toString();
@@ -118,6 +126,15 @@ public class IoController {
         return ioComposeServiceDatabase.traceLoad(vsCodeReqParam);
 
     }
+
+    @PostMapping("/traceLoadEnc")
+    public VsCodeRespVo traceLoadEnc(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
+        String taskId = UUID.randomUUID().toString();
+        vsCodeReqParam.setTaskId(taskId);
+        return ioComposeServiceDatabase.traceLoadEnc(vsCodeReqParam);
+
+    }
+
 
     /**
      * 查询任务进度（导入和导出共用）

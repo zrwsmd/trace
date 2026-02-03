@@ -991,6 +991,81 @@ public class IoComposeServiceDatabase {
 
     }
 
+
+    public VsCodeRespVo traceSaveEnc(VsCodeReqParam vsCodeReqParam) {
+        Long requestId = vsCodeReqParam.getRequestId();
+        VsCodeRespVo responseVo = new VsCodeRespVo();
+        String binPath = vsCodeReqParam.getBinPath();
+        if (binPath == null || binPath.isEmpty()) {
+            logger.error("缺少bin路径的信息!!");
+            responseVo.setRet(false);
+            responseVo.setResponseId(requestId);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("缺少bin路径的信息!!");
+            return responseVo;
+        }
+        Long traceId = 0L;
+        String savePath = "";
+        try {
+            JSONObject jsonObject = vsCodeReqParam.gettData();
+            Set<String> keySet = jsonObject.keySet();
+            for (String key : keySet) {
+                if (VarConst.ID.equals(key)) {
+                    traceId = Long.valueOf(String.valueOf(jsonObject.get(key)));
+                    continue;
+                }
+                if (VarConst.PATH.equals(key)) {
+                    savePath = String.valueOf(jsonObject.get(key));
+                }
+            }
+            TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            String tableName = traceTableRelatedInfo.getTableName();
+            final String traceStatus = traceTableRelatedInfo.getTraceStatus();
+            if (!"traceStop".equalsIgnoreCase(traceStatus)) {
+                responseVo.setRet(false);
+                throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能保存文件!,traceId= " + traceId);
+            }
+            String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+            backUpTableList.add(tableName);
+            for (int i = 0; i < shardNum; i++) {
+                String tableShardName = tableName.concat("_").concat(String.valueOf(i));
+                backUpTableList.add(tableShardName);
+            }
+            final List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.getCurrentFieldNames(traceId);
+            for (TraceFieldMeta traceFieldMeta : traceFieldMetaList) {
+                for (Integer downRate : data) {
+                    backUpTableList.add(downsamplingTableName.concat("_").concat(traceFieldMeta.getVarName())
+                            .concat("_").concat(String.valueOf(downRate)));
+                }
+            }
+            // MysqlUtils.backUpForSaveFile(savePath, DATABASE_NAME, backUpTableList);
+            // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
+            // DATABASE_NAME, backUpTableList, 4);
+            asyncDatabaseMultiThreadService
+                    .backupEncryptedAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
+                            binPath)
+                    .whenComplete((result, ex) -> {
+                        if (ex == null && "success".equals(result)) {
+                            logger.info("trace async save successfully executed");
+                        } else {
+                            logger.error("trace async save failed: " + (ex != null ? ex.getMessage() : result));
+                        }
+                    });
+            logger.info("保存文件" + savePath + "成功(异步任务已提交)");
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("数据导出任务已启动，请使用GET http://localhost:17777/io/task/status/{taskId}查询进度");
+            responseVo.setResponseId(requestId);
+            responseVo.setType("ackForTraceSave");
+            responseVo.setRet(true);
+        } catch (Exception e) {
+            responseVo.setRet(false);
+            logger.error("trace save 异常,报错信息为: " + e);
+            return responseVo;
+        }
+        return responseVo;
+
+    }
+
     public static int getPercentBucketRate(int size) {
         if (size <= 0) {
             throw new RuntimeException("数据量大小不能小于等于0!");
@@ -1378,6 +1453,70 @@ public class IoComposeServiceDatabase {
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
             asyncDatabaseMultiThreadService.loadAsync(taskId, loadedPath, DATABASE_NAME, binPath)
+                    .whenComplete((result, ex) -> {
+                        if (ex == null && "success".equals(result)) {
+                            logger.info("trace async load successfully executed");
+                        } else {
+                            logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
+                        }
+                    });
+            // asyncMySqlShellService.loadAsync(taskId, loadedPath, DATABASE_NAME, 4);
+            JSONObject respJson = new JSONObject();
+            Map<String, Object> map = new HashMap<>();
+            map.put("traceCfg", traceConfig);
+            respJson.put("rData", map);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("数据导入任务已启动，请使用GET http://localhost:17777/io/task/status/{taskId}查询进度");
+            responseVo.setResponseId(requestId);
+            responseVo.setType("ackForTraceLoad");
+            responseVo.setRet(true);
+            responseVo.settData(respJson);
+        } catch (Exception e) {
+            responseVo.setRet(false);
+            e.printStackTrace();
+            logger.error("trace load 异常,报错信息为: " + e);
+            return responseVo;
+        }
+        return responseVo;
+    }
+
+
+    public VsCodeRespVo traceLoadEnc(VsCodeReqParam vsCodeReqParam) {
+        Long requestId = vsCodeReqParam.getRequestId();
+        VsCodeRespVo responseVo = new VsCodeRespVo();
+        String binPath = vsCodeReqParam.getBinPath();
+        if (binPath == null || binPath.isEmpty()) {
+            logger.error("缺少bin路径的信息!!");
+            responseVo.setRet(false);
+            responseVo.setResponseId(requestId);
+            responseVo.setTaskId(vsCodeReqParam.getTaskId());
+            responseVo.setMessage("缺少bin路径的信息!!");
+            return responseVo;
+        }
+        Long traceId = 0L;
+        String loadedPath = "";
+        try {
+            JSONObject jsonObject = vsCodeReqParam.gettData();
+            Set<String> keySet = jsonObject.keySet();
+            for (String key : keySet) {
+                if (VarConst.ID.equals(key)) {
+                    traceId = Long.valueOf(String.valueOf(jsonObject.get(key)));
+                    continue;
+                }
+                if (VarConst.PATH.equals(key)) {
+                    loadedPath = String.valueOf(jsonObject.get(key));
+                }
+            }
+            TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            String traceConfig = traceTableRelatedInfo.getTraceConfig();
+            final String traceStatus = traceTableRelatedInfo.getTraceStatus();
+            if (!"traceStop".equalsIgnoreCase(traceStatus)) {
+                responseVo.setRet(false);
+                throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
+            }
+            String taskId = vsCodeReqParam.getTaskId();
+            // 启动异步任务
+            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
