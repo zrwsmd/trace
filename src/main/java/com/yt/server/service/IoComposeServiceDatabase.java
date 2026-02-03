@@ -952,8 +952,11 @@ public class IoComposeServiceDatabase {
             }
             String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
             if (StringUtils.isBlank(tableName) || StringUtils.isBlank(downsamplingTableName)) {
-                responseVo.setRet(false);
-                responseVo.setMessage("当前trace实例可能还没有启动(刚创建),没有需要导出的数据");
+                responseVo.setRet(true);
+                responseVo.setTaskId(vsCodeReqParam.getTaskId());
+                responseVo.setResponseId(requestId);
+                responseVo.setType("ackForTraceSave");
+                responseVo.setMessage("当前trace实例还没有启动(刚创建),没有需要导出的数据");
                 return responseVo;
             }
             backUpTableList.add(tableName);
@@ -1032,8 +1035,11 @@ public class IoComposeServiceDatabase {
             }
             String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
             if (StringUtils.isBlank(tableName) || StringUtils.isBlank(downsamplingTableName)) {
-                responseVo.setRet(false);
-                responseVo.setMessage("当前trace实例可能还没有启动(刚创建),没有需要导出的数据");
+                responseVo.setRet(true);
+                responseVo.setTaskId(vsCodeReqParam.getTaskId());
+                responseVo.setResponseId(requestId);
+                responseVo.setType("ackForTraceSave");
+                responseVo.setMessage("当前trace实例还没有启动(刚创建),没有需要导出的数据");
                 return responseVo;
             }
             backUpTableList.add(tableName);
