@@ -8,7 +8,7 @@ import org.springframework.stereotype.Service;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.CipherOutputStream;
-import javax.crypto.spec.IvParameterSpec;
+import javax.crypto.spec.ChaCha20ParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -157,7 +157,8 @@ public class AsyncDatabaseMultiThreadService {
             List<File> encryptedFiles = new ArrayList<>();
 
             if (sourceFile.isDirectory()) {
-                File[] files = sourceFile.listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
+                File[] files = sourceFile
+                        .listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
                 if (files != null && files.length > 0) {
                     encryptedFiles.addAll(Arrays.asList(files));
                 }
@@ -440,8 +441,10 @@ public class AsyncDatabaseMultiThreadService {
         }
     }
 
-    private void exportTableEncrypted(String databaseName, String tableName, String saveDir, String binPath) throws Exception {
-        File tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_export_" + System.currentTimeMillis() + "_" + tableName);
+    private void exportTableEncrypted(String databaseName, String tableName, String saveDir, String binPath)
+            throws Exception {
+        File tempDir = new File(System.getProperty("java.io.tmpdir"),
+                "mysql_export_" + System.currentTimeMillis() + "_" + tableName);
         if (!tempDir.mkdirs()) {
             throw new RuntimeException("无法创建临时目录");
         }
@@ -493,18 +496,18 @@ public class AsyncDatabaseMultiThreadService {
     }
 
     private void encryptFile(String inputFile, String outputFile) throws Exception {
-        byte[] keyBytes = get16ByteKey(ENCRYPTION_KEY);
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
-        IvParameterSpec ivSpec = new IvParameterSpec(new byte[16]);
+        byte[] keyBytes = get32ByteKey(ENCRYPTION_KEY);
+        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "ChaCha20");
+        ChaCha20ParameterSpec chaChaSpec = new ChaCha20ParameterSpec(new byte[12], 1);
 
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+        Cipher cipher = Cipher.getInstance("ChaCha20");
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, chaChaSpec);
 
         try (FileInputStream fis = new FileInputStream(inputFile);
              FileOutputStream fos = new FileOutputStream(outputFile);
              CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
 
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[65536];
             int bytesRead;
             while ((bytesRead = fis.read(buffer)) != -1) {
                 cos.write(buffer, 0, bytesRead);
@@ -513,18 +516,18 @@ public class AsyncDatabaseMultiThreadService {
     }
 
     private void decryptFile(String inputFile, String outputFile) throws Exception {
-        byte[] keyBytes = get16ByteKey(ENCRYPTION_KEY);
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
-        IvParameterSpec ivSpec = new IvParameterSpec(new byte[16]);
+        byte[] keyBytes = get32ByteKey(ENCRYPTION_KEY);
+        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "ChaCha20");
+        ChaCha20ParameterSpec chaChaSpec = new ChaCha20ParameterSpec(new byte[12], 1);
 
-        Cipher cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+        Cipher cipher = Cipher.getInstance("ChaCha20");
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, chaChaSpec);
 
         try (FileInputStream fis = new FileInputStream(inputFile);
              CipherInputStream cis = new CipherInputStream(fis, cipher);
              FileOutputStream fos = new FileOutputStream(outputFile)) {
 
-            byte[] buffer = new byte[8192];
+            byte[] buffer = new byte[65536];
             int bytesRead;
             while ((bytesRead = cis.read(buffer)) != -1) {
                 fos.write(buffer, 0, bytesRead);
@@ -532,10 +535,10 @@ public class AsyncDatabaseMultiThreadService {
         }
     }
 
-    private byte[] get16ByteKey(String key) throws Exception {
+    private byte[] get32ByteKey(String key) throws Exception {
         MessageDigest sha = MessageDigest.getInstance("SHA-256");
         byte[] keyBytes = sha.digest(key.getBytes(StandardCharsets.UTF_8));
-        return Arrays.copyOf(keyBytes, 16);
+        return keyBytes;
     }
 
     private void updateTaskStatus(String taskId, String status, int progress, String message) {
