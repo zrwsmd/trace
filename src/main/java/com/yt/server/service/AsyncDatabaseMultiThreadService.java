@@ -503,13 +503,13 @@ public class AsyncDatabaseMultiThreadService {
         Cipher cipher = Cipher.getInstance("ChaCha20");
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, chaChaSpec);
 
-        try (FileInputStream fis = new FileInputStream(inputFile);
-             FileOutputStream fos = new FileOutputStream(outputFile);
-             CipherOutputStream cos = new CipherOutputStream(fos, cipher)) {
+        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(inputFile), 1024 * 1024);
+             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024);
+             CipherOutputStream cos = new CipherOutputStream(bos, cipher)) {
 
-            byte[] buffer = new byte[65536];
+            byte[] buffer = new byte[1024 * 1024]; // 1MB缓冲区
             int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
+            while ((bytesRead = bis.read(buffer)) != -1) {
                 cos.write(buffer, 0, bytesRead);
             }
         }
@@ -523,14 +523,14 @@ public class AsyncDatabaseMultiThreadService {
         Cipher cipher = Cipher.getInstance("ChaCha20");
         cipher.init(Cipher.DECRYPT_MODE, keySpec, chaChaSpec);
 
-        try (FileInputStream fis = new FileInputStream(inputFile);
-             CipherInputStream cis = new CipherInputStream(fis, cipher);
-             FileOutputStream fos = new FileOutputStream(outputFile)) {
+        try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(inputFile), 1024 * 1024);
+             CipherInputStream cis = new CipherInputStream(bis, cipher);
+             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024)) {
 
-            byte[] buffer = new byte[65536];
+            byte[] buffer = new byte[1024 * 1024]; // 1MB缓冲区
             int bytesRead;
             while ((bytesRead = cis.read(buffer)) != -1) {
-                fos.write(buffer, 0, bytesRead);
+                bos.write(buffer, 0, bytesRead);
             }
         }
     }
