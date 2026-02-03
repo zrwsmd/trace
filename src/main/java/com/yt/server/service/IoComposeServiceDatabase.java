@@ -951,6 +951,11 @@ public class IoComposeServiceDatabase {
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能保存文件!,traceId= " + traceId);
             }
             String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+            if (StringUtils.isBlank(tableName) || StringUtils.isBlank(downsamplingTableName)) {
+                responseVo.setRet(false);
+                responseVo.setMessage("当前trace实例可能还没有启动(刚创建),没有需要导出的数据");
+                return responseVo;
+            }
             backUpTableList.add(tableName);
             for (int i = 0; i < shardNum; i++) {
                 String tableShardName = tableName.concat("_").concat(String.valueOf(i));
@@ -1026,6 +1031,11 @@ public class IoComposeServiceDatabase {
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能保存文件!,traceId= " + traceId);
             }
             String downsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+            if (StringUtils.isBlank(tableName) || StringUtils.isBlank(downsamplingTableName)) {
+                responseVo.setRet(false);
+                responseVo.setMessage("当前trace实例可能还没有启动(刚创建),没有需要导出的数据");
+                return responseVo;
+            }
             backUpTableList.add(tableName);
             for (int i = 0; i < shardNum; i++) {
                 String tableShardName = tableName.concat("_").concat(String.valueOf(i));
