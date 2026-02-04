@@ -260,6 +260,13 @@ public class IoComposeServiceDatabase {
                     tableName = "trace".concat(String.valueOf(seqNum + 1));
                 }
                 downsamplingTableName = tableName.concat("_downsampling");
+                TraceTimestampStatistics traceTimestampStatistics = new TraceTimestampStatistics();
+                traceTimestampStatistics.setTraceId(traceId);
+                traceTimestampStatistics.setTempTimestamp(0L);
+                traceTimestampStatistics.setLastEndTimestamp(0L);
+                traceTimestampStatistics.setReachedBatchNum(0);
+                traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
+                //handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer(),"later");
             } else {
                 String oldFieldMetaIds = traceTableRelatedInfo.getOldFieldMetaIds();
                 handleWasteTimeService.handleHistoryDownSamplingData(tableName, traceTableRelatedInfo, jdbcTemplate,
@@ -346,9 +353,36 @@ public class IoComposeServiceDatabase {
                 }
             }
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+            TraceFieldMeta traceFieldMeta = traceFieldMetaMapper.selectByPrimaryKey(traceId);
             if (traceTableRelatedInfo != null) {
+                Connection connection = dataSource.getConnection();
+                final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+                final String tableName = traceTableRelatedInfo.getTableName();
+                int currentShardNum = 0;
+                for (int i = 0; i < shardNum; i++) {
+                    String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
+                    Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
+                    if (eachNum == null || eachNum == 0) {
+                        currentShardNum = i - 1;
+                        break;
+                    }
+                }
+                if (traceFieldMeta != null) {
+                    List<String> fieldNameList = new ArrayList<>();
+                    //traceFieldMeta
+//                    for (String varName : originalFieldNameList) {
+//                        String filterVarName = erasePoint(varName);
+//                        fieldNameList.add(filterVarName);
+//                    }
+                    fieldNameList.add(0, VarConst.ID);
+                }
+                Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
+                String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
                 traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
                 traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
+                //handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp);
             } else {
                 responseVo.setRet(false);
                 throw new RuntimeException("trace stop获取元数据信息失败");
@@ -1369,7 +1403,7 @@ public class IoComposeServiceDatabase {
                 }
             }
             List<String> filterList = fieldNameList.stream().filter(item -> !VarConst.ID.equals(item)).toList();
-            handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer());
+            handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer(), "later");
             // final long end = System.currentTimeMillis();
             // logger.info("总共花费了" + (end - start));
         } catch (Exception e) {
