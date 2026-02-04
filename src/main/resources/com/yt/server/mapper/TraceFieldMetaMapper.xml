@@ -69,7 +69,7 @@
   <sql id="Base_Column_List">
     id, traceId, varName, mysqlType, windowsType
   </sql>
-  <select id="selectByPrimaryKey" parameterType="java.lang.Long" resultMap="BaseResultMap">
+    <select id="selectByPrimaryKey" resultMap="BaseResultMap">
     select
     <include refid="Base_Column_List" />
     from trace_field_meta
