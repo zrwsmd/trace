@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
@@ -31,7 +32,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.yt.server.service.HandleWasteTimeService.handleDownData;
 import static com.yt.server.util.BaseUtils.*;
 
 @Service
@@ -380,7 +380,7 @@ public class IoComposeServiceDatabase {
                     Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
                     traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
                     traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
-                    handleDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp);
+                    handleStopDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp, currentShardNum);
                 }
             } else {
                 responseVo.setRet(false);
@@ -1599,5 +1599,48 @@ public class IoComposeServiceDatabase {
             per = defaultPer;
         }
         return per;
+    }
+
+    @Async(VarConst.THREAD_POOL)
+    public void handleStopDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp, int currentShardNum) throws SQLException, ClassNotFoundException {
+        Object[] regionParam = new Object[]{lastMaxTimestamp, currentMaxTimestamp};
+        String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
+        // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));
+        final List<Map<String, Object>> list = jdbcTemplate.queryForList(originalRegionSql, regionParam);
+        List<UniPoint> uniPointList = convertList2Uni(list);
+        if (CollectionUtils.isNotEmpty(uniPointList)) {
+            for (String varName : varNames) {
+                List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
+                if (CollectionUtils.isNotEmpty(singleVarDataList)) {
+                    List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
+                    if (originalFilterVarDataList.size() <= downSamplingRate) {
+                        continue;
+                    }
+                    int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
+                    List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.HANDLE_DOWNDATA);
+                    String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
+                    //save to database
+                    List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
+                    BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
+                    Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                }
+                traceTimestampStatistics.setTempTimestamp(lastMaxTimestamp);
+                traceTimestampStatistics.setLastEndTimestamp(currentMaxTimestamp);
+                traceTimestampStatistics.setReachedBatchNum(traceTimestampStatistics.getReachedBatchNum() + 1);
+                traceTimestampStatisticsMapper.updateByPrimaryKey(traceTimestampStatistics);
+                logger.info("stop方法的异步任务执行完成");
+            }
+        }
+
+//    @Async(VarConst.THREAD_POOL)
+//    public void handleGc() {
+//        System.gc();
+//    }
+
     }
 }
