@@ -52,10 +52,10 @@ public class HandleWasteTimeService {
     private TraceTableRelatedInfoMapper traceTableRelatedInfoMapper;
 
     @Autowired
-    private TraceTimestampStatisticsMapper traceTimestampStatisticsMapper;
+    private static TraceTimestampStatisticsMapper traceTimestampStatisticsMapper;
     final Object lock = new Object();
 
-    int currentShardNum = 0;
+    static int currentShardNum = 0;
 
     @Autowired
     private DataSource dataSource;
@@ -210,7 +210,7 @@ public class HandleWasteTimeService {
 
     }
 
-    public void handleDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp) throws SQLException, ClassNotFoundException {
+    public static void handleDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp) throws SQLException, ClassNotFoundException {
         Object[] regionParam = new Object[]{lastMaxTimestamp, currentMaxTimestamp};
         String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
         // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));

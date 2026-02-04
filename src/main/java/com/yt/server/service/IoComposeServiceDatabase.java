@@ -31,6 +31,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static com.yt.server.service.HandleWasteTimeService.handleDownData;
 import static com.yt.server.util.BaseUtils.*;
 
 @Service
@@ -354,7 +355,7 @@ public class IoComposeServiceDatabase {
             }
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
-            TraceFieldMeta traceFieldMeta = traceFieldMetaMapper.selectByPrimaryKey(traceId);
+            List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.selectByPrimaryKey(traceId);
             if (traceTableRelatedInfo != null) {
                 Connection connection = dataSource.getConnection();
                 final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
@@ -368,21 +369,19 @@ public class IoComposeServiceDatabase {
                         break;
                     }
                 }
-                if (traceFieldMeta != null) {
+                if (!traceFieldMetaList.isEmpty()) {
                     List<String> fieldNameList = new ArrayList<>();
-                    //traceFieldMeta
-//                    for (String varName : originalFieldNameList) {
-//                        String filterVarName = erasePoint(varName);
-//                        fieldNameList.add(filterVarName);
-//                    }
-                    fieldNameList.add(0, VarConst.ID);
+                    String varNames = traceFieldMetaList.stream()
+                            .map(TraceFieldMeta::getVarName)
+                            .collect(Collectors.joining(","));
+                    fieldNameList.add(varNames);
+                    Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
+                    String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                    Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
+                    traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
+                    traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
+                    handleDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp);
                 }
-                Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
-                String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
-                Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
-                traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
-                traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
-                //handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp);
             } else {
                 responseVo.setRet(false);
                 throw new RuntimeException("trace stop获取元数据信息失败");
