@@ -31,7 +31,8 @@ public class AsyncDatabaseMultiThreadService {
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
 
     @Async
-    public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath) {
+    public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
+                                               boolean autoFinish) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化导入任务...");
@@ -89,10 +90,14 @@ public class AsyncDatabaseMultiThreadService {
 
             if (errorCount.get() > 0) {
                 String errorMsg = "导入完成但有 " + errorCount.get() + " 个错误: " + String.join("; ", errors);
-                updateTaskStatus(taskId, "warning", 100, errorMsg);
+                if (autoFinish) {
+                    updateTaskStatus(taskId, "warning", 100, errorMsg);
+                }
                 return CompletableFuture.completedFuture("warning: " + errorMsg);
             } else {
-                updateTaskStatus(taskId, "success", 100, "导入完成！共 " + totalFiles + " 个文件");
+                if (autoFinish) {
+                    updateTaskStatus(taskId, "success", 100, "导入完成！共 " + totalFiles + " 个文件");
+                }
                 return CompletableFuture.completedFuture("success");
             }
 
@@ -146,7 +151,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadEncryptedAsync(String taskId, String encryptedFilePath,
-                                                        String databaseName, String binPath) {
+                                                        String databaseName, String binPath, boolean autoFinish) {
         ExecutorService executor = null;
         File tempDir = null;
         try {
@@ -229,10 +234,14 @@ public class AsyncDatabaseMultiThreadService {
 
             if (errorCount.get() > 0) {
                 String errorMsg = "解密导入完成但有 " + errorCount.get() + " 个错误: " + String.join("; ", errors);
-                updateTaskStatus(taskId, "warning", 100, errorMsg);
+                if (autoFinish) {
+                    updateTaskStatus(taskId, "warning", 100, errorMsg);
+                }
                 return CompletableFuture.completedFuture("warning: " + errorMsg);
             } else {
-                updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
+                if (autoFinish) {
+                    updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
+                }
                 return CompletableFuture.completedFuture("success");
             }
 
@@ -541,7 +550,7 @@ public class AsyncDatabaseMultiThreadService {
         return keyBytes;
     }
 
-    private void updateTaskStatus(String taskId, String status, int progress, String message) {
+    public void updateTaskStatus(String taskId, String status, int progress, String message) {
         TaskStatus taskStatus = taskStatusMap.computeIfAbsent(taskId, k -> new TaskStatus());
         taskStatus.setStatus(status);
         taskStatus.setProgress(progress);

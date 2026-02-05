@@ -1466,7 +1466,8 @@ public class IoComposeServiceDatabase {
                 throw new RuntimeException("当前trace状态为【" + traceStatus + "】,不是stop状态不能载入文件!,traceId= " + traceId);
             }
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadAsync(vsCodeReqParam.getTaskId(), loadedPath, DATABASE_NAME, binPath)
+            asyncDatabaseMultiThreadService
+                    .loadAsync(vsCodeReqParam.getTaskId(), loadedPath, DATABASE_NAME, binPath, false)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
@@ -1497,7 +1498,11 @@ public class IoComposeServiceDatabase {
                                     });
                             TraceParamCount traceParamCount = traceParamCountList.get(0);
                             // 将结果存入任务状态，供前端查询
-                            asyncDatabaseMultiThreadService.updateTaskResult(vsCodeReqParam.getTaskId(), 0, traceParamCount.getMax());
+                            asyncDatabaseMultiThreadService.updateTaskResult(vsCodeReqParam.getTaskId(), 0,
+                                    traceParamCount.getMax());
+                            // 手动更新任务状态为完成
+                            asyncDatabaseMultiThreadService.updateTaskStatus(vsCodeReqParam.getTaskId(), "success", 100,
+                                    "导入及查询起始时间更新完成");
                         } else {
                             logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
                         }
@@ -1557,7 +1562,7 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath)
+            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath, false)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
@@ -1588,7 +1593,10 @@ public class IoComposeServiceDatabase {
                                     });
                             TraceParamCount traceParamCount = traceParamCountList.get(0);
                             // 将结果存入任务状态，供前端查询
-                            asyncDatabaseMultiThreadService.updateTaskResult(vsCodeReqParam.getTaskId(), 0, traceParamCount.getMax());
+                            asyncDatabaseMultiThreadService.updateTaskResult(vsCodeReqParam.getTaskId(), 0,
+                                    traceParamCount.getMax());
+                            // 手动更新任务状态为完成
+                            asyncDatabaseMultiThreadService.updateTaskStatus(taskId, "success", 100, "解密导入及查询起始时间更新完成");
                         } else {
                             logger.error("trace load failed: " + (ex != null ? ex.getMessage() : result));
                         }
