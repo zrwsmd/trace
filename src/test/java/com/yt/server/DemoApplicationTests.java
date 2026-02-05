@@ -8,14 +8,13 @@ import com.ggalmazor.ltdownsampling.LTThreeBuckets;
 import com.google.common.collect.Lists;
 import com.yt.server.entity.*;
 import com.yt.server.mapper.TableNumInfoMapper;
+import com.yt.server.mapper.TraceFieldMetaMapper;
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
-import com.yt.server.service.LagFullTableHandler;
 import com.yt.server.util.BaseUtils;
 import com.yt.server.util.ConnectionManager;
 import com.yt.server.util.VarConst;
 import javassist.CannotCompileException;
 import javassist.NotFoundException;
-import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.map.MultiValueMap;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
@@ -46,7 +45,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -94,6 +96,9 @@ class DemoApplicationTests {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private TraceFieldMetaMapper traceFieldMetaMapper;
 
 //    @Autowired
 //    private TraceTimestampStatisticsMapper traceTimestampStatisticsMapper;
@@ -1399,20 +1404,20 @@ class DemoApplicationTests {
         System.out.println(System.currentTimeMillis()-l);
     }
 
-    @Test
-    void testaba() throws InterruptedException, ExecutionException {
-        CountDownLatch lagCountDownLatch=new CountDownLatch(1);
-        List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
-        List<UniPoint> lagUniPointList=new ArrayList<>();
-        final long l = System.currentTimeMillis();
-        Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler("trace303_0", 1L,  7375674L, jdbcTemplate, lagCountDownLatch, "App_00Pou_00var_00,App_00Pou_00var_01,App_00Pou_00var_02,App_00Pou_00var_03,App_00Pou_00var_04,App_00Pou_00var_05,App_00Pou_00var_06,App_00Pou_00var_07,App_00Pou_00var_08,App_00Pou_00var_09", null));
-        lagResultList.add(future);
-        lagCountDownLatch.await();
-        for (Future<List<UniPoint>> aafuture : lagResultList) {
-            lagUniPointList.addAll(aafuture.get());
-        }
-        System.out.println(System.currentTimeMillis()-l);
-    }
+//    @Test
+//    void testaba() throws InterruptedException, ExecutionException {
+//        CountDownLatch lagCountDownLatch=new CountDownLatch(1);
+//        List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
+//        List<UniPoint> lagUniPointList=new ArrayList<>();
+//        final long l = System.currentTimeMillis();
+//        Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler("trace303_0", 1L,  7375674L, jdbcTemplate, lagCountDownLatch, "App_00Pou_00var_00,App_00Pou_00var_01,App_00Pou_00var_02,App_00Pou_00var_03,App_00Pou_00var_04,App_00Pou_00var_05,App_00Pou_00var_06,App_00Pou_00var_07,App_00Pou_00var_08,App_00Pou_00var_09", null));
+//        lagResultList.add(future);
+//        lagCountDownLatch.await();
+//        for (Future<List<UniPoint>> aafuture : lagResultList) {
+//            lagUniPointList.addAll(aafuture.get());
+//        }
+//        System.out.println(System.currentTimeMillis()-l);
+//    }
 
     @Test
     void cc(){
@@ -1518,46 +1523,46 @@ class DemoApplicationTests {
             break;
         }
         if (beginLeftStartTimestamp != null) {
-            handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
+            //handleTailOrHeadBusiness(reqStartTimestamp, beginLeftStartTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
         }
         if (endLeftStartTimestamp != null) {
-            handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
+            //handleTailOrHeadBusiness(endLeftStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName, allMultiValueMap, closestRate, filterVarList);
         }
     }
 
-    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, List<String> filterVarList) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
-        //小于一个任务周期就没必要请求了
-        if (endTimestamp - startTimestamp < 10) {
-            return;
-        }
-        Set<String> queryTable = getQueryTable(startTimestamp, endTimestamp, currentTableName);
-        CountDownLatch lagCountDownLatch = new CountDownLatch(queryTable.size());
-        List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
-        List<UniPoint> lagUniPointList = new ArrayList<>();
-        for (String table : queryTable) {
-            Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, startTimestamp, endTimestamp, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
-            lagResultList.add(future);
-        }
-        lagCountDownLatch.await();
-        for (Future<List<UniPoint>> future : lagResultList) {
-            lagUniPointList.addAll(future.get());
-        }
-        for (String varName : filterVarList) {
-            List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
-            int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
-            Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
-            if (bucketSize > 0) {//够一定数量进行降采样
-                List<UniPoint> uniPoints = LTThreeBuckets.sorted(singleVarDataList, bucketSize);
-                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
-            } else if (bucketSize == 0 && customDownsamplingRule != 1 && customDownsamplingRule <= singleVarDataList.size() && singleVarDataList.size() > 2) { //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
-                List<UniPoint> uniPoints = LTThreeBuckets.sorted(singleVarDataList, singleVarDataList.size() / customDownsamplingRule);
-                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
-            } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0) {//数量少的话直接返回全量表数据
-                uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
-                break;
-            }
-        }
-    }
+//    private void handleTailOrHeadBusiness(Long startTimestamp, Long endTimestamp, String currentTableName, List<Map<String, String>> mapList, String fieldName, MultiValueMap allMultiValueMap, int closestRate, List<String> filterVarList) throws NoSuchFieldException, IllegalAccessException, InterruptedException, ExecutionException {
+//        //小于一个任务周期就没必要请求了
+//        if (endTimestamp - startTimestamp < 10) {
+//            return;
+//        }
+//        Set<String> queryTable = getQueryTable(startTimestamp, endTimestamp, currentTableName);
+//        CountDownLatch lagCountDownLatch = new CountDownLatch(queryTable.size());
+//        List<Future<List<UniPoint>>> lagResultList = new ArrayList<>();
+//        List<UniPoint> lagUniPointList = new ArrayList<>();
+//        for (String table : queryTable) {
+//            Future<List<UniPoint>> future = pool.submit(new LagFullTableHandler(table, startTimestamp, endTimestamp, jdbcTemplate, lagCountDownLatch, fieldName, mapList));
+//            lagResultList.add(future);
+//        }
+//        lagCountDownLatch.await();
+//        for (Future<List<UniPoint>> future : lagResultList) {
+//            lagUniPointList.addAll(future.get());
+//        }
+//        for (String varName : filterVarList) {
+//            List<UniPoint> singleVarDataList = lagUniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
+//            int bucketSize = singleVarDataList.size() > closestRate ? singleVarDataList.size() / closestRate : 0;
+//            Integer customDownsamplingRule = customDownsamplingRule(closestRate, singleVarDataList.size());
+//            if (bucketSize > 0) {//够一定数量进行降采样
+//                List<UniPoint> uniPoints = LTThreeBuckets.sorted(singleVarDataList, bucketSize);
+//                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+//            } else if (bucketSize == 0 && customDownsamplingRule != 1 && customDownsamplingRule <= singleVarDataList.size() && singleVarDataList.size() > 2) { //如果singleVarDataList数量大的话并且closestRate足够大bucketSize仍然可能为0，所以此时假如closestRate等于64，那么取次一级的32进行降采样
+//                List<UniPoint> uniPoints = LTThreeBuckets.sorted(singleVarDataList, singleVarDataList.size() / customDownsamplingRule);
+//                uniPoint2Map(uniPoints, allMultiValueMap, mapList);
+//            } else if (CollectionUtils.isNotEmpty(singleVarDataList) && bucketSize == 0) {//数量少的话直接返回全量表数据
+//                uniPoint2Map(lagUniPointList, allMultiValueMap, mapList);
+//                break;
+//            }
+//        }
+//    }
 
     private Set<String> getQueryTable(Long reqStartTimestamp, Long reqEndTimestamp, String parentTable) {
         Set<String> set = new TreeSet<>();
@@ -1661,6 +1666,12 @@ class DemoApplicationTests {
             System.out.println(varName);
         }
         System.out.println(list);
+    }
+
+    @Test
+    void traceFieldtest() {
+        final List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.selectByPrimaryKey(770279307267L);
+        System.out.println(traceFieldMetaList);
     }
 
 }
