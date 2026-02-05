@@ -117,6 +117,8 @@ public class HandleWasteTimeService {
                 TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
                 //logger.info("traceId={}", traceId);
                 int downSamplingRate = 4;
+                int downsamplingBatch = 4096;
+
 //                if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
 //                    for (int i = 0; i < shardNum; i++) {
 //                        String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
@@ -196,7 +198,7 @@ public class HandleWasteTimeService {
                         }
                     }
                 }
-                if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
+                if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= downsamplingBatch) {
                     //writeTimestampToD4("ok",lastMaxTimestamp, currentMaxTimestamp);
                     handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
                 }

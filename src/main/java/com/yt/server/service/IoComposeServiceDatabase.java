@@ -69,7 +69,7 @@ public class IoComposeServiceDatabase {
     public static final int lagNum = 3000;
 
     // 16384减去首位2个固定桶
-    public static final int DOWNSAMPLING_BATCH = 4096;
+//    public static final int DOWNSAMPLING_BATCH = 4096;
 
     final Object lock = new Object();
 
