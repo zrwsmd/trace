@@ -113,9 +113,9 @@ public class HandleWasteTimeService {
                 TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
                 final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
                 final String tableName = traceTableRelatedInfo.getTableName();
-                long total = 0L;
+                //long total = 0L;
                 TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
-                logger.info("traceId={}", traceId);
+                //logger.info("traceId={}", traceId);
                 int downSamplingRate = 4;
 //                if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
 //                    for (int i = 0; i < shardNum; i++) {
