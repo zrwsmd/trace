@@ -1,9 +1,6 @@
 package com.yt.server.service;
 
-import com.yt.server.entity.TraceFieldMeta;
-import com.yt.server.entity.TraceTableRelatedInfo;
-import com.yt.server.entity.TraceTimestampStatistics;
-import com.yt.server.entity.UniPoint;
+import com.yt.server.entity.*;
 import com.yt.server.mapper.TraceFieldMetaMapper;
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import com.yt.server.mapper.TraceTimestampStatisticsMapper;
@@ -107,7 +104,7 @@ public class HandleWasteTimeService {
     }
 
     @Async(VarConst.THREAD_POOL)
-    public void insertDownsamplingData(Long traceId, JdbcTemplate jdbcTemplate, int shardNum, Collection<String> varNames, Integer per, String fromType) throws SQLException, ClassNotFoundException {
+    public void insertDownsamplingData(Long traceId, JdbcTemplate jdbcTemplate, int shardNum, Collection<String> varNames, Integer per) throws SQLException, ClassNotFoundException {
         synchronized (lock) {
             try (Connection connection = dataSource.getConnection()) {
                 TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
@@ -115,103 +112,99 @@ public class HandleWasteTimeService {
                 final String tableName = traceTableRelatedInfo.getTableName();
                 long total = 0L;
                 TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
-                logger.info("traceId={}", traceId);
                 int downSamplingRate = 4;
-//                if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
-//                    for (int i = 0; i < shardNum; i++) {
-//                        String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
-//                        Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
-//                        if (eachNum == null || eachNum == 0) {
-//                            currentShardNum = i - 1;
-//                            break;
-//                        }
-//                        total += eachNum;
-//                    }
-//                    if (total >= IoComposeServiceDatabase.DOWNSAMPLING_BATCH) {
-//                        String originalRegionCountSql = "select min(id),max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
-//                        List<TraceParamCount> traceParamCountList = jdbcTemplate.query(originalRegionCountSql, (rs, rowNum) -> {
-//                            TraceParamCount traceParamCount = new TraceParamCount();
-//                            traceParamCount.setMin(rs.getLong(1));
-//                            traceParamCount.setMax(rs.getLong(2));
-//                            return traceParamCount;
-//                        });
-//                        TraceParamCount traceParamCount = traceParamCountList.get(0);
-//                        Object[] regionParam = new Object[]{traceParamCount.getMin(), traceParamCount.getMax()};
-//                        String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
-//                        // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));
-//                        final List<Map<String, Object>> list = jdbcTemplate.queryForList(originalRegionSql, regionParam);
-//                        List<UniPoint> uniPointList = convertList2Uni(list);
-//                        for (String varName : varNames) {
-////                            varName = varName.trim();
-////                            String finalVarName = varName;
-//                            List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
-//                            if (CollectionUtils.isNotEmpty(singleVarDataList)) {
-//                                List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
-//                                if (originalFilterVarDataList.size() <= downSamplingRate) {
-//                                    continue;
-//                                }
-//                                int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
-//                                List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.ASYNC_TYPE);
-//                                String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
-//                                //save to database
-//                                List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
-//                                BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
-//                                Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
-//                                Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
-//                                Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
-//                                Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
-//                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
-//                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
-//                            }
-//                        }
-//                        traceTimestampStatistics = new TraceTimestampStatistics();
-//                        traceTimestampStatistics.setTraceId(traceId);
-//                        traceTimestampStatistics.setTempTimestamp(traceParamCount.getMin());
-//                        traceTimestampStatistics.setLastEndTimestamp(traceParamCount.getMax());
-//                        traceTimestampStatistics.setReachedBatchNum(1);
-//                        traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
-//                    }
-//                }
-                for (int i = 0; i < shardNum; i++) {
-                    String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
-                    Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
-                    if (eachNum == null || eachNum == 0) {
-                        currentShardNum = i - 1;
-                        break;
+                if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
+                    for (int i = 0; i < shardNum; i++) {
+                        String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
+                        Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
+                        if (eachNum == null || eachNum == 0) {
+                            currentShardNum = i - 1;
+                            break;
+                        }
+                        total += eachNum;
                     }
-                }
-                Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
-                String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
-                Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
-                String countSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
-                Integer count = jdbcTemplate.queryForObject(countSql, Integer.class);
-                if (count != null) {
-                    if (count >= (totalSize / shardNum)) {
-                        //假如lastMaxTimestamp=9965990，currentMaxTimestamp=9999990，此时0号表已经写满，但是9965990-9999990还没写入因为不满DOWNSAMPLING_BATCH，如果不加这一行，下一次currentShardNum加1此时开始读取1号表，0号表这个区间的数据就不会被写入降采样表了，数据就有空缺了
-                        handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
-                        if (currentShardNum < shardNum - 1) {
-                            currentShardNum = currentShardNum + 1;
-                        } else {
-                            return;
+                    if (total >= IoComposeServiceDatabase.DOWNSAMPLING_BATCH) {
+                        String originalRegionCountSql = "select min(id),max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                        List<TraceParamCount> traceParamCountList = jdbcTemplate.query(originalRegionCountSql, (rs, rowNum) -> {
+                            TraceParamCount traceParamCount = new TraceParamCount();
+                            traceParamCount.setMin(rs.getLong(1));
+                            traceParamCount.setMax(rs.getLong(2));
+                            return traceParamCount;
+                        });
+                        TraceParamCount traceParamCount = traceParamCountList.get(0);
+                        Object[] regionParam = new Object[]{traceParamCount.getMin(), traceParamCount.getMax()};
+                        String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
+                        // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));
+                        final List<Map<String, Object>> list = jdbcTemplate.queryForList(originalRegionSql, regionParam);
+                        List<UniPoint> uniPointList = convertList2Uni(list);
+                        for (String varName : varNames) {
+//                            varName = varName.trim();
+//                            String finalVarName = varName;
+                            List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
+                            if (CollectionUtils.isNotEmpty(singleVarDataList)) {
+                                List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
+                                if (originalFilterVarDataList.size() <= downSamplingRate) {
+                                    continue;
+                                }
+                                int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
+                                List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.ASYNC_TYPE);
+                                String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
+                                //save to database
+                                List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
+                                BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
+                                Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                                handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                            }
+                        }
+                        traceTimestampStatistics = new TraceTimestampStatistics();
+                        traceTimestampStatistics.setTraceId(traceId);
+                        traceTimestampStatistics.setTempTimestamp(traceParamCount.getMin());
+                        traceTimestampStatistics.setLastEndTimestamp(traceParamCount.getMax());
+                        traceTimestampStatistics.setReachedBatchNum(1);
+                        traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
+                    }
+                } else {
+                    Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
+                    String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                    Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
+                    String countSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                    Integer count = jdbcTemplate.queryForObject(countSql, Integer.class);
+                    if (count != null) {
+                        if (count >= (totalSize / shardNum)) {
+                            //假如lastMaxTimestamp=9965990，currentMaxTimestamp=9999990，此时0号表已经写满，但是9965990-9999990还没写入因为不满DOWNSAMPLING_BATCH，如果不加这一行，下一次currentShardNum加1此时开始读取1号表，0号表这个区间的数据就不会被写入降采样表了，数据就有空缺了
+                            handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
+                            if (currentShardNum < shardNum - 1) {
+                                currentShardNum = currentShardNum + 1;
+                            } else {
+                                return;
+                            }
+
                         }
                     }
-                }
-                if (currentMaxTimestamp == null || lastMaxTimestamp == null) {
-                    logger.info("traceId:{}", traceId);
-                    logger.info("count:{}", count);
-                    logger.info("originalRegionCountSql:{}", originalRegionCountSql);
-                }
-                if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
-                    //writeTimestampToD4("ok",lastMaxTimestamp, currentMaxTimestamp);
-                    handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
+                    if (currentMaxTimestamp == null || lastMaxTimestamp == null) {
+                        logger.info("traceId:{}", traceId);
+                        logger.info("count:{}", count);
+                        logger.info("originalRegionCountSql:{}", originalRegionCountSql);
+                    }
+                    if (currentMaxTimestamp != null && lastMaxTimestamp != null && (currentMaxTimestamp - lastMaxTimestamp) / per >= DOWNSAMPLING_BATCH) {
+                        //writeTimestampToD4("ok",lastMaxTimestamp, currentMaxTimestamp);
+                        handleDownData(jdbcTemplate, varNames, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, downSamplingRate, lastMaxTimestamp, currentMaxTimestamp);
+                    }
+//                    else {
+//                        writeTimestampToD4("no",lastMaxTimestamp, currentMaxTimestamp);
+//                    }
+
                 }
             }
         }
 
     }
 
-    @Async(VarConst.THREAD_POOL)
-    public void handleDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp) throws SQLException, ClassNotFoundException {
+    private void handleDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp) throws SQLException, ClassNotFoundException {
         Object[] regionParam = new Object[]{lastMaxTimestamp, currentMaxTimestamp};
         String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
         // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));

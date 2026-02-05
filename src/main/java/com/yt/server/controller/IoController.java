@@ -17,20 +17,17 @@ import java.util.UUID;
 
 ;
 
-
 @RestController
 @RequestMapping("/io")
 public class IoController {
 
     private final Logger logger = LoggerFactory.getLogger(IoController.class);
 
-
     @Autowired
     private IoComposeServiceDatabase ioComposeServiceDatabase;
 
     @Autowired
     private AsyncDatabaseMultiThreadService asyncDatabaseMultiThreadService;
-
 
     /**
      * 处理实时数据并且实时返回
@@ -57,11 +54,12 @@ public class IoController {
      * @return
      * @throws Exception
      */
-//    @PostMapping("/analyzeTraceLiveData")
-//    public void analyzeTraceLiveData(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
-//        ioComposeServiceDatabase.analyzeTraceLiveData(vsCodeReqParam);
-//
-//    }
+    // @PostMapping("/analyzeTraceLiveData")
+    // public void analyzeTraceLiveData(@RequestBody VsCodeReqParam vsCodeReqParam)
+    // throws Exception {
+    // ioComposeServiceDatabase.analyzeTraceLiveData(vsCodeReqParam);
+    //
+    // }
 
     @PostMapping("/traceCreate")
     public VsCodeRespVo traceCreate(@RequestBody VsCodeReqParam vsCodeReqParam) throws Exception {
@@ -89,7 +87,7 @@ public class IoController {
 
     @PostMapping("/traceGc")
     public VsCodeRespVo traceGc(@RequestBody VsCodeReqParam vsCodeReqParam) {
-         return ioComposeServiceDatabase.traceInitializeGc(vsCodeReqParam);
+        return ioComposeServiceDatabase.traceInitializeGc(vsCodeReqParam);
     }
 
     @PostMapping("/analyzeTraceLiveData2")
@@ -135,7 +133,6 @@ public class IoController {
 
     }
 
-
     /**
      * 查询任务进度（导入和导出共用）
      */
@@ -153,7 +150,9 @@ public class IoController {
             result.put("status", status.getStatus());
             result.put("progress", status.getProgress());
             result.put("message", status.getMessage());
-            result.put("updateTime", status.getUpdateTime());
+            result.put("completeTime", status.getUpdateTime());
+            result.put("startTime", status.getStartTime());
+            result.put("endTime", status.getEndTime());
         }
 
         return result;

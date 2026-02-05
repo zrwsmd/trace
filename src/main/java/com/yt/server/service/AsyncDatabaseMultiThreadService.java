@@ -550,6 +550,14 @@ public class AsyncDatabaseMultiThreadService {
         logger.debug("任务 " + taskId + ": " + status + " - " + progress + "% - " + message);
     }
 
+    public void updateTaskResult(String taskId, long startTime, long endTime) {
+        TaskStatus taskStatus = taskStatusMap.get(taskId);
+        if (taskStatus != null) {
+            taskStatus.setStartTime(startTime);
+            taskStatus.setEndTime(endTime);
+        }
+    }
+
     public TaskStatus getTaskStatus(String taskId) {
         return taskStatusMap.get(taskId);
     }
@@ -603,6 +611,8 @@ public class AsyncDatabaseMultiThreadService {
         private int progress;
         private String message;
         private long updateTime;
+        private long startTime;
+        private Long EndTime;
 
         public String getStatus() {
             return status;
@@ -634,6 +644,22 @@ public class AsyncDatabaseMultiThreadService {
 
         public void setUpdateTime(long updateTime) {
             this.updateTime = updateTime;
+        }
+
+        public Long getEndTime() {
+            return EndTime;
+        }
+
+        public void setEndTime(Long endTime) {
+            EndTime = endTime;
+        }
+
+        public long getStartTime() {
+            return startTime;
+        }
+
+        public void setStartTime(long startTime) {
+            this.startTime = startTime;
         }
     }
 }
