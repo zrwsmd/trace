@@ -73,7 +73,7 @@
     select
     <include refid="Base_Column_List" />
     from trace_field_meta
-    where id = #{id,jdbcType=BIGINT}
+        where traceId = #{id,jdbcType=BIGINT}
   </select>
   <delete id="deleteByPrimaryKey" parameterType="java.lang.Long">
     delete from trace_field_meta
