@@ -384,11 +384,9 @@ public class IoComposeServiceDatabase {
                         }
                     }
                     if (!traceFieldMetaList.isEmpty()) {
-                        List<String> fieldNameList = new ArrayList<>();
-                        String varNames = traceFieldMetaList.stream()
+                        List<String> fieldNameList = traceFieldMetaList.stream()
                                 .map(TraceFieldMeta::getVarName)
-                                .collect(Collectors.joining(","));
-                        fieldNameList.add(varNames);
+                                .collect(Collectors.toList());
                         Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
                         String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
                         Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
