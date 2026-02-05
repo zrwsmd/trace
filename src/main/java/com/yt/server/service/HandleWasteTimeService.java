@@ -115,6 +115,7 @@ public class HandleWasteTimeService {
                 final String tableName = traceTableRelatedInfo.getTableName();
                 long total = 0L;
                 TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+                logger.info("traceId={}", traceId);
                 int downSamplingRate = 4;
 //                if (traceTimestampStatistics == null || traceTimestampStatistics.getLastEndTimestamp() == 0) {
 //                    for (int i = 0; i < shardNum; i++) {
@@ -171,15 +172,14 @@ public class HandleWasteTimeService {
 //                        traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
 //                    }
 //                }
-//                for (int i = 0; i < shardNum; i++) {
-//                    String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
-//                    Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
-//                    if (eachNum == null || eachNum == 0) {
-//                        currentShardNum = i - 1;
-//                        break;
-//                    }
-//                    total += eachNum;
-//                }
+                for (int i = 0; i < shardNum; i++) {
+                    String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
+                    Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
+                    if (eachNum == null || eachNum == 0) {
+                        currentShardNum = i - 1;
+                        break;
+                    }
+                }
                 Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
                 String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
                 Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);

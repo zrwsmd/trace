@@ -322,9 +322,18 @@ public class IoComposeServiceDatabase {
                 Integer seqNum = originalTableNumInfo.getTableSeqNum();
                 originalTableNumInfo.setTableSeqNum(seqNum + 1);
                 tableNumInfoMapper.updateByPrimaryKey(originalTableNumInfo);
+                TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+                traceTimestampStatistics.setLastEndTimestamp(0L);
+                traceTimestampStatistics.setTempTimestamp(0L);
+                traceTimestampStatistics.setReachedBatchNum(0);
                 // 比如trace
-                // stop的时候traceTimestampStatistics之前表里的offset并没有清除，所以需要删除之前那条数据，重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
-                traceTimestampStatisticsMapper.deleteByPrimaryKey(traceId);
+                /**
+                 * stop的时候traceTimestampStatistics之前表里的offset并没有清除，
+                 所以需要删除之前那条数据(改为更新，不能删除了，都重置为0)，
+                 重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
+                 */
+                //traceTimestampStatisticsMapper.deleteByPrimaryKey(traceId);
+                traceTimestampStatisticsMapper.updateByPrimaryKeySelective(traceTimestampStatistics);
             }
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceStart");
@@ -357,30 +366,31 @@ public class IoComposeServiceDatabase {
             TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
             List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.selectByPrimaryKey(traceId);
             if (traceTableRelatedInfo != null) {
-                Connection connection = dataSource.getConnection();
-                final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
-                final String tableName = traceTableRelatedInfo.getTableName();
-                int currentShardNum = 0;
-                for (int i = 0; i < shardNum; i++) {
-                    String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
-                    Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
-                    if (eachNum == null || eachNum == 0) {
-                        currentShardNum = i - 1;
-                        break;
+                try (Connection connection = dataSource.getConnection()) {
+                    final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+                    final String tableName = traceTableRelatedInfo.getTableName();
+                    int currentShardNum = 0;
+                    for (int i = 0; i < shardNum; i++) {
+                        String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
+                        Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
+                        if (eachNum == null || eachNum == 0) {
+                            currentShardNum = i - 1;
+                            break;
+                        }
                     }
-                }
-                if (!traceFieldMetaList.isEmpty()) {
-                    List<String> fieldNameList = new ArrayList<>();
-                    String varNames = traceFieldMetaList.stream()
-                            .map(TraceFieldMeta::getVarName)
-                            .collect(Collectors.joining(","));
-                    fieldNameList.add(varNames);
-                    Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
-                    String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
-                    Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
-                    traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
-                    traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
-                    handleStopDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp, currentShardNum);
+                    if (!traceFieldMetaList.isEmpty()) {
+                        List<String> fieldNameList = new ArrayList<>();
+                        String varNames = traceFieldMetaList.stream()
+                                .map(TraceFieldMeta::getVarName)
+                                .collect(Collectors.joining(","));
+                        fieldNameList.add(varNames);
+                        Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
+                        String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                        Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
+                        traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
+                        traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
+                        handleStopDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp, currentShardNum);
+                    }
                 }
             } else {
                 responseVo.setRet(false);
@@ -1633,7 +1643,7 @@ public class IoComposeServiceDatabase {
                 traceTimestampStatistics.setLastEndTimestamp(currentMaxTimestamp);
                 traceTimestampStatistics.setReachedBatchNum(traceTimestampStatistics.getReachedBatchNum() + 1);
                 traceTimestampStatisticsMapper.updateByPrimaryKey(traceTimestampStatistics);
-                logger.info("stop方法的异步任务执行完成");
+                logger.info("stop方法的异步任务执行完成,开始时间戳{},结束时间戳{},采样周期{}", lastMaxTimestamp, currentMaxTimestamp, getConfigPer());
             }
         }
 
