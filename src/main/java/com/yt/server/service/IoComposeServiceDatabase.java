@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
@@ -260,6 +261,13 @@ public class IoComposeServiceDatabase {
                     tableName = "trace".concat(String.valueOf(seqNum + 1));
                 }
                 downsamplingTableName = tableName.concat("_downsampling");
+                TraceTimestampStatistics traceTimestampStatistics = new TraceTimestampStatistics();
+                traceTimestampStatistics.setTraceId(traceId);
+                traceTimestampStatistics.setTempTimestamp(0L);
+                traceTimestampStatistics.setLastEndTimestamp(0L);
+                traceTimestampStatistics.setReachedBatchNum(0);
+                traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
+                //handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer(),"later");
             } else {
                 String oldFieldMetaIds = traceTableRelatedInfo.getOldFieldMetaIds();
                 handleWasteTimeService.handleHistoryDownSamplingData(tableName, traceTableRelatedInfo, jdbcTemplate,
@@ -314,9 +322,18 @@ public class IoComposeServiceDatabase {
                 Integer seqNum = originalTableNumInfo.getTableSeqNum();
                 originalTableNumInfo.setTableSeqNum(seqNum + 1);
                 tableNumInfoMapper.updateByPrimaryKey(originalTableNumInfo);
+                TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+                traceTimestampStatistics.setLastEndTimestamp(0L);
+                traceTimestampStatistics.setTempTimestamp(0L);
+                traceTimestampStatistics.setReachedBatchNum(0);
                 // 比如trace
-                // stop的时候traceTimestampStatistics之前表里的offset并没有清除，所以需要删除之前那条数据，重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
-                traceTimestampStatisticsMapper.deleteByPrimaryKey(traceId);
+                /**
+                 * stop的时候traceTimestampStatistics之前表里的offset并没有清除，
+                 所以需要删除之前那条数据(改为更新，不能删除了，都重置为0)，
+                 重新从头异步写入高倍降采样表,否则会从之前的那个时间点开始写，假如改了配置或者变量就有问题了
+                 */
+                //traceTimestampStatisticsMapper.deleteByPrimaryKey(traceId);
+                traceTimestampStatisticsMapper.updateByPrimaryKeySelective(traceTimestampStatistics);
             }
             responseVo.setResponseId(requestId);
             responseVo.setType("ackForTraceStart");
@@ -346,9 +363,40 @@ public class IoComposeServiceDatabase {
                 }
             }
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            TraceTimestampStatistics traceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+            List<TraceFieldMeta> traceFieldMetaList = traceFieldMetaMapper.selectByPrimaryKey(traceId);
             if (traceTableRelatedInfo != null) {
-                traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
-                traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
+                try (Connection connection = dataSource.getConnection()) {
+                    final String parentDownsamplingTableName = traceTableRelatedInfo.getDownsamplingTableName();
+                    final String tableName = traceTableRelatedInfo.getTableName();
+                    int currentShardNum = 0;
+                    for (int i = 0; i < shardNum; i++) {
+                        String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
+                        Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
+                        if (eachNum == null || eachNum == 0) {
+                            currentShardNum = i - 1;
+                            break;
+                        } else {
+                            // 如果分片数为9的话不需要加1了，要不然就超出成为10了
+                            if (i < shardNum - 1) {
+                                currentShardNum = currentShardNum + 1;
+                            }
+                        }
+                    }
+                    if (!traceFieldMetaList.isEmpty()) {
+                        List<String> fieldNameList = new ArrayList<>();
+                        String varNames = traceFieldMetaList.stream()
+                                .map(TraceFieldMeta::getVarName)
+                                .collect(Collectors.joining(","));
+                        fieldNameList.add(varNames);
+                        Long lastMaxTimestamp = traceTimestampStatistics.getLastEndTimestamp();
+                        String originalRegionCountSql = "select max(id) from " + tableName.concat("_").concat(String.valueOf(currentShardNum));
+                        Long currentMaxTimestamp = jdbcTemplate.queryForObject(originalRegionCountSql, Long.class);
+                        traceTableRelatedInfo.setTraceStatus(vsCodeReqParam.getType());
+                        traceTableRelatedInfoMapper.updateByPrimaryKey(traceTableRelatedInfo);
+                        handleStopDownData(jdbcTemplate, fieldNameList, connection, parentDownsamplingTableName, tableName, traceTimestampStatistics, 4, lastMaxTimestamp, currentMaxTimestamp, currentShardNum);
+                    }
+                }
             } else {
                 responseVo.setRet(false);
                 throw new RuntimeException("trace stop获取元数据信息失败");
@@ -1368,7 +1416,7 @@ public class IoComposeServiceDatabase {
                 }
             }
             List<String> filterList = fieldNameList.stream().filter(item -> !VarConst.ID.equals(item)).toList();
-            handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer());
+            handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate, shardNum, filterList, getConfigPer(), "later");
             // final long end = System.currentTimeMillis();
             // logger.info("总共花费了" + (end - start));
         } catch (Exception e) {
@@ -1627,5 +1675,42 @@ public class IoComposeServiceDatabase {
             per = defaultPer;
         }
         return per;
+    }
+
+    @Async(VarConst.THREAD_POOL)
+    public void handleStopDownData(JdbcTemplate jdbcTemplate, Collection<String> varNames, Connection connection, String parentDownsamplingTableName, String tableName, TraceTimestampStatistics traceTimestampStatistics, int downSamplingRate, Long lastMaxTimestamp, Long currentMaxTimestamp, int currentShardNum) throws SQLException, ClassNotFoundException {
+        Object[] regionParam = new Object[]{lastMaxTimestamp, currentMaxTimestamp};
+        String originalRegionSql = "select * from " + tableName.concat("_").concat(String.valueOf(currentShardNum)) + " where id between ? and ? ";
+        // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));
+        final List<Map<String, Object>> list = jdbcTemplate.queryForList(originalRegionSql, regionParam);
+        List<UniPoint> uniPointList = convertList2Uni(list);
+        if (CollectionUtils.isNotEmpty(uniPointList)) {
+            for (String varName : varNames) {
+                List<UniPoint> singleVarDataList = uniPointList.stream().filter(item -> varName.equals(item.getVarName())).toList();
+                if (CollectionUtils.isNotEmpty(singleVarDataList)) {
+                    List<UniPoint> originalFilterVarDataList = new CopyOnWriteArrayList<>(singleVarDataList);
+                    if (originalFilterVarDataList.size() <= downSamplingRate) {
+                        continue;
+                    }
+                    int bucketSize = originalFilterVarDataList.size() / downSamplingRate;
+                    List<UniPoint> downsampledList = AdaptiveDownsamplingSelector.downsample(originalFilterVarDataList, bucketSize, AdaptiveDownsamplingSelector.ExecType.HANDLE_DOWNDATA);
+                    String downsamplingTableName = parentDownsamplingTableName.concat("_").concat(varName).concat("_").concat(String.valueOf(downSamplingRate));
+                    //save to database
+                    List<Object[]> dataObjArr = convertPojoList2ObjListArr(downsampledList, 2);
+                    BaseUtils.executeDownsamplingBatchUpdate(connection, downsamplingTableName, dataObjArr);
+                    Pair<List<UniPoint>, Integer> firstDownsamplingPair = handleBigDownsampling(downsampledList, varName, 2, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> secondDownsamplingPair = handleBigDownsampling(downsampledList, varName, 8, connection, downSamplingRate, parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> middleDownsamplingPair = handleBigDownsampling(secondDownsamplingPair.getLeft(), varName, 2, connection, secondDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    Pair<List<UniPoint>, Integer> thirdDownsamplingPair = handleBigDownsampling(middleDownsamplingPair.getLeft(), varName, 2, connection, middleDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 2, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                    handleBigDownsampling(thirdDownsamplingPair.getLeft(), varName, 4, connection, thirdDownsamplingPair.getRight(), parentDownsamplingTableName);
+                }
+                traceTimestampStatistics.setTempTimestamp(lastMaxTimestamp);
+                traceTimestampStatistics.setLastEndTimestamp(currentMaxTimestamp);
+                traceTimestampStatistics.setReachedBatchNum(traceTimestampStatistics.getReachedBatchNum() + 1);
+                traceTimestampStatisticsMapper.updateByPrimaryKey(traceTimestampStatistics);
+                logger.info("stop方法的异步任务执行完成,开始时间戳{},结束时间戳{},采样周期{}", lastMaxTimestamp, currentMaxTimestamp, getConfigPer());
+            }
+        }
     }
 }
