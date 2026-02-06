@@ -82,13 +82,17 @@ public class QueryFullTableHandler implements Callable<MultiValueMap> {
             }
             innerCountDownLatch.await();
             for (Future<MultiValueMap> future : resultList) {
-                allMultiValueMap.putAll(future.get());
+                MultiValueMap map = future.get();
+                if (map != null) {
+                    allMultiValueMap.putAll(map);
+                }
             }
         } catch (Exception e) {
             logger.error(QueryFullTableHandler.class.getName(), e);
-            throw e;
+            // throw e;
+        } finally {
+            pool.shutdown();
         }
-        pool.shutdown();
         return allMultiValueMap;
     }
 }

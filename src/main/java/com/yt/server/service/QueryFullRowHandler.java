@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 
-
 import static com.yt.server.util.BaseUtils.convertList2MultiMap;
 
 /**
@@ -35,7 +34,9 @@ public class QueryFullRowHandler implements Callable<MultiValueMap> {
     private final String fieldName;
     private final List<Map<String, String>> mapList;
 
-    public QueryFullRowHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName, List<Map<String, String>> mapList) {
+    public QueryFullRowHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp,
+                               JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String fieldName,
+                               List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.reqStartTimestamp = reqStartTimestamp;
         this.reqEndTimestamp = reqEndTimestamp;
@@ -45,20 +46,23 @@ public class QueryFullRowHandler implements Callable<MultiValueMap> {
         this.mapList = mapList;
     }
 
-
     @Override
     public MultiValueMap call() throws Exception {
-        MultiValueMap multiValueMap = null;
+        MultiValueMap multiValueMap = new MultiValueMap();
         try {
             Object[] regionParam = new Object[]{reqStartTimestamp, reqEndTimestamp};
             String allFieldName = VarConst.ID.concat(",").concat(fieldName);
             String originalRegionSql = "select " + allFieldName + " from " + queryTable + " where id between ? and ? ";
-            // List list = jdbcTemplate.query(originalRegionSql, regionParam, new BeanPropertyRowMapper<>(clazz));
+            // List list = jdbcTemplate.query(originalRegionSql, regionParam, new
+            // BeanPropertyRowMapper<>(clazz));
             final List<Map<String, Object>> list = jdbcTemplate.queryForList(originalRegionSql, regionParam);
             multiValueMap = convertList2MultiMap(list, mapList);
-            countDownLatch.countDown();
         } catch (Exception e) {
             logger.error(QueryFullRowHandler.class.getName(), e);
+        } finally {
+            if (countDownLatch != null) {
+                countDownLatch.countDown();
+            }
         }
         return multiValueMap;
     }

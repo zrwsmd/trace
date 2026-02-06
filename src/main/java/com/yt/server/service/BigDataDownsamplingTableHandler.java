@@ -82,13 +82,17 @@ public class BigDataDownsamplingTableHandler implements Callable<List<UniPoint>>
             }
             innerCountDownLatch.await();
             for (Future<List<UniPoint>> future : resultList) {
-                allUniPointList.addAll(future.get());
+                List<UniPoint> list = future.get();
+                if (list != null) {
+                    allUniPointList.addAll(list);
+                }
             }
         } catch (Exception e) {
             logger.error(BigDataDownsamplingTableHandler.class.getName(), e);
-            throw e;
+            // throw e;
+        } finally {
+            pool.shutdown();
         }
-        pool.shutdown();
 
         // Object[] samplingParam = new Object[]{reqStartTimestamp,
         // reqEndTimestamp,varName,closestRate };

@@ -6,7 +6,8 @@ import org.springframework.jdbc.core.BeanPropertyRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 
 import static com.yt.server.util.BaseUtils.convert2MultiMapForTraceDownSampling;
 
@@ -29,8 +30,8 @@ public class QueryDownsamplingRowHandler implements Callable<MultiValueMap> {
     private final String varName;
     private final Integer closestRate;
 
-
-    public QueryDownsamplingRowHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, Integer closestRate) {
+    public QueryDownsamplingRowHandler(String queryTable, Long reqStartTimestamp, Long reqEndTimestamp,
+                                       JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, Integer closestRate) {
         this.queryTable = queryTable;
         this.reqStartTimestamp = reqStartTimestamp;
         this.reqEndTimestamp = reqEndTimestamp;
@@ -40,14 +41,23 @@ public class QueryDownsamplingRowHandler implements Callable<MultiValueMap> {
         this.closestRate = closestRate;
     }
 
-
     @Override
     public MultiValueMap call() throws Exception {
-        Object[] samplingParam = new Object[]{reqStartTimestamp, reqEndTimestamp,varName,closestRate };
-        String samplingSql = " select varName, timestamp, value from " + queryTable + "  where  timestamp between ? and ? and varName=? and downSamplingRate=?  ";
-        List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
-        MultiValueMap multiValueMap = convert2MultiMapForTraceDownSampling(traceDownsamplingList,varName,null);
-        countDownLatch.countDown();
-        return multiValueMap;
+        try {
+            Object[] samplingParam = new Object[]{reqStartTimestamp, reqEndTimestamp, varName, closestRate};
+            String samplingSql = " select varName, timestamp, value from " + queryTable
+                    + "  where  timestamp between ? and ? and varName=? and downSamplingRate=?  ";
+            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam,
+                    new BeanPropertyRowMapper<>(TraceDownsampling.class));
+            MultiValueMap multiValueMap = convert2MultiMapForTraceDownSampling(traceDownsamplingList, varName, null);
+            return multiValueMap;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return new MultiValueMap();
+        } finally {
+            if (countDownLatch != null) {
+                countDownLatch.countDown();
+            }
+        }
     }
 }

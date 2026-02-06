@@ -36,8 +36,9 @@ public class BigDataDownsamplingRowHandler implements Callable<List<UniPoint>> {
     private final String varName;
     private final List<Map<String, String>> mapList;
 
-
-    public BigDataDownsamplingRowHandler(String queryTable, Long currentStartTimestamp, Long currentEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, List<Map<String, String>> mapList) {
+    public BigDataDownsamplingRowHandler(String queryTable, Long currentStartTimestamp, Long currentEndTimestamp,
+                                         JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName,
+                                         List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.currentStartTimestamp = currentStartTimestamp;
         this.currentEndTimestamp = currentEndTimestamp;
@@ -47,21 +48,23 @@ public class BigDataDownsamplingRowHandler implements Callable<List<UniPoint>> {
         this.mapList = mapList;
     }
 
-
     @Override
     public List<UniPoint> call() throws Exception {
-        List<UniPoint> uniPointList = null;
+        List<UniPoint> uniPointList = new java.util.ArrayList<>();
         try {
             Object[] samplingParam = new Object[]{currentStartTimestamp, currentEndTimestamp};
             String samplingSql = " select timestamp, value from " + queryTable + "  where  timestamp between ? and ?  ";
-            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
+            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam,
+                    new BeanPropertyRowMapper<>(TraceDownsampling.class));
             uniPointList = convertTraceDownsampling2UniPoint(traceDownsamplingList, varName);
-            countDownLatch.countDown();
         } catch (DataAccessException e) {
             logger.error(BigDataDownsamplingRowHandler.class.getName(), e);
+        } finally {
+            if (countDownLatch != null) {
+                countDownLatch.countDown();
+            }
         }
         return uniPointList;
     }
-
 
 }

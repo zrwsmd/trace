@@ -44,8 +44,9 @@ public class QueryEachDownsamplingRowHandler implements Callable<List<UniPoint>>
     private final Integer shardNum;
     private final List<Map<String, String>> mapList;
 
-
-    public QueryEachDownsamplingRowHandler(String queryTable, Long currentStartTimestamp, Long currentEndTimestamp, JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, Integer closestRate, Long reqStartTimestamp, Long reqEndTimestamp, Integer shardNum, List<Map<String, String>> mapList) {
+    public QueryEachDownsamplingRowHandler(String queryTable, Long currentStartTimestamp, Long currentEndTimestamp,
+                                           JdbcTemplate jdbcTemplate, CountDownLatch countDownLatch, String varName, Integer closestRate,
+                                           Long reqStartTimestamp, Long reqEndTimestamp, Integer shardNum, List<Map<String, String>> mapList) {
         this.queryTable = queryTable;
         this.currentStartTimestamp = currentStartTimestamp;
         this.currentEndTimestamp = currentEndTimestamp;
@@ -59,38 +60,43 @@ public class QueryEachDownsamplingRowHandler implements Callable<List<UniPoint>>
         this.mapList = mapList;
     }
 
-
     @Override
     public List<UniPoint> call() throws Exception {
-        List<UniPoint> uniPointList = null;
+        List<UniPoint> uniPointList = new java.util.ArrayList<>();
         try {
             Object[] samplingParam = new Object[]{currentStartTimestamp, currentEndTimestamp};
-//            if (currentStartTimestamp.equals(reqStartTimestamp)) {
-//                queryBorderData(allValueMap, currentStartTimestamp);
-//            }
+            // if (currentStartTimestamp.equals(reqStartTimestamp)) {
+            // queryBorderData(allValueMap, currentStartTimestamp);
+            // }
             String realQueryTable = queryTable.concat("_").concat(String.valueOf(closestRate));
-            String samplingSql = " select timestamp, value from " + realQueryTable + "  where  timestamp between ? and ?  ";
-            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
+            String samplingSql = " select timestamp, value from " + realQueryTable
+                    + "  where  timestamp between ? and ?  ";
+            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, samplingParam,
+                    new BeanPropertyRowMapper<>(TraceDownsampling.class));
             uniPointList = convertTraceDownsampling2UniPoint(traceDownsamplingList, varName);
-//            if (currentEndTimestamp.equals(reqEndTimestamp)) {
-//                queryBorderData(allValueMap, currentEndTimestamp);
-//            }
-            countDownLatch.countDown();
+            // if (currentEndTimestamp.equals(reqEndTimestamp)) {
+            // queryBorderData(allValueMap, currentEndTimestamp);
+            // }
         } catch (DataAccessException e) {
             logger.error(QueryEachDownsamplingRowHandler.class.getName(), e);
+        } finally {
+            if (countDownLatch != null) {
+                countDownLatch.countDown();
+            }
         }
         return uniPointList;
     }
 
-
-    private void queryBorderData(MultiValueMap allValueMap, Long currentTimestamp) throws NoSuchFieldException, IllegalAccessException {
+    private void queryBorderData(MultiValueMap allValueMap, Long currentTimestamp)
+            throws NoSuchFieldException, IllegalAccessException {
         try {
             String realQueryTable = queryTable.concat("_").concat(String.valueOf(closestRate));
             MultiValueMap multiValueMap = new MultiValueMap();
             Object[] singleParam = new Object[]{currentTimestamp};
             String samplingSql = " select timestamp, value from " + realQueryTable + "  where  timestamp =?  ";
-            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, singleParam, new BeanPropertyRowMapper<>(TraceDownsampling.class));
-            //降采样表没有这条数据，才去全量表查询
+            List<TraceDownsampling> traceDownsamplingList = jdbcTemplate.query(samplingSql, singleParam,
+                    new BeanPropertyRowMapper<>(TraceDownsampling.class));
+            // 降采样表没有这条数据，才去全量表查询
             if (CollectionUtils.isEmpty(traceDownsamplingList)) {
                 final String shardTable = getShardTable(realQueryTable, currentTimestamp, shardNum);
                 Object[] fullTableParam = new Object[]{currentTimestamp};
@@ -100,7 +106,8 @@ public class QueryEachDownsamplingRowHandler implements Callable<List<UniPoint>>
                     final Map<String, Object> map = list.get(0);
                     final Set<String> keySet = map.keySet();
                     for (String varName : keySet) {
-                        multiValueMap.put(parseOriginalVarName(varName, mapList), new BigDecimal[]{BigDecimal.valueOf(currentTimestamp), getBigDecimal(map.get(varName))});
+                        multiValueMap.put(parseOriginalVarName(varName, mapList), new BigDecimal[]{
+                                BigDecimal.valueOf(currentTimestamp), getBigDecimal(map.get(varName))});
                     }
                     allValueMap.putAll(multiValueMap);
                 } else {
