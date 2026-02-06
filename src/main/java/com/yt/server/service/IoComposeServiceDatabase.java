@@ -1161,8 +1161,9 @@ public class IoComposeServiceDatabase {
         if (reqEndTimestamp < ((long) (totalSize / shardNum) * getConfigPer())) {
             set.add(parentTable.concat("_").concat(String.valueOf(0)));
         }
-        int beginSlot = (int) (reqStartTimestamp / ((totalSize / shardNum) * getConfigPer()));
-        int endSlot = (int) (reqEndTimestamp / ((totalSize / shardNum) * getConfigPer()));
+        // 强制转为 long 计算，防止溢出
+        int beginSlot = (int) (reqStartTimestamp / ((long) (totalSize / shardNum) * getConfigPer()));
+        int endSlot = (int) (reqEndTimestamp / ((long) (totalSize / shardNum) * getConfigPer()));
         // 防止endTimestamp请求过大导致实际没有那么多分表
         if (endSlot > shardNum - 1) {
             endSlot = shardNum - 1;
@@ -1234,7 +1235,7 @@ public class IoComposeServiceDatabase {
                 // timestamp<=2000000)
                 if (timestamp >= first && timestamp <= first + (long) (totalSize / shardNum) * getConfigPer()) {
                     return ((long) i * (totalSize / shardNum) * getConfigPer()
-                            + (totalSize / shardNum) * getConfigPer());
+                            + (long) (totalSize / shardNum) * getConfigPer()); // 加上 (long)
                 }
             }
         } catch (Exception e) {
