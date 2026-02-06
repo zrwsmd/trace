@@ -67,18 +67,20 @@ public class AsyncDatabaseMultiThreadService {
                         // 例如: trace158.sql, trace158_0.sql, trace158_downsampling_xxx.sql 都会被保留
                         // 而 trace1.sql, trace27_3.sql 会被过滤掉
                         if (fileName.equals(originalTableName) ||
-                                fileName.startsWith(originalTableName + "_")) {
+                                fileName.startsWith(originalTableName + "_") ||
+                                GLOBAL_TRACE_TABLES.contains(fileName)) {
                             sqlFiles.add(file);
                         }
                     }
-                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}",
+                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}(包含4个固定文件的导入)",
                             files.length, originalTableName, sqlFiles.size());
                 }
             } else if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(".sql")) {
                 // 单文件模式也需要检查前缀
                 String fileName = sourceFile.getName().replace(".sql", "");
                 if (fileName.equals(originalTableName) ||
-                        fileName.startsWith(originalTableName + "_")) {
+                        fileName.startsWith(originalTableName + "_") ||
+                        GLOBAL_TRACE_TABLES.contains(fileName)) {
                     sqlFiles.add(sourceFile);
                 } else {
                     updateTaskStatus(taskId, "error", 0,
@@ -222,7 +224,7 @@ public class AsyncDatabaseMultiThreadService {
                             encryptedFiles.add(file);
                         }
                     }
-                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}",
+                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}(包含4个固定文件的导入)",
                             files.length, originalTableName, encryptedFiles.size());
                 }
             } else if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION)) {
