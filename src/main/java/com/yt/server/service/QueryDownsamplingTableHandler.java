@@ -44,7 +44,7 @@ public class QueryDownsamplingTableHandler implements Callable<MultiValueMap> {
 
     @Override
     public MultiValueMap call() throws Exception {
-        MultiValueMap allMultiValueMap;
+        MultiValueMap allMultiValueMap = null;
         try {
             allMultiValueMap = new MultiValueMap();
             int size = 0;
