@@ -1,7 +1,10 @@
 package com.yt.server.service;
 
+import com.yt.server.entity.TraceTableRelatedInfo;
+import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +32,9 @@ public class AsyncDatabaseMultiThreadService {
 
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
+
+    @Autowired
+    private TraceTableRelatedInfoMapper traceTableRelatedInfoMapper;
 
     @Async
     public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
@@ -151,10 +157,13 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadEncryptedAsync(String taskId, String encryptedFilePath,
-                                                        String databaseName, String binPath, boolean autoFinish) {
+                                                        String databaseName, String binPath, boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         File tempDir = null;
         try {
+            TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            //只导入trace158的表，当前的originalTableName就是trace158
+            String originalTableName = traceTableRelatedInfo.getTableName();
             updateTaskStatus(taskId, "running", 0, "初始化加密导入任务...");
             logger.debug("开始解密并导入: " + encryptedFilePath);
 

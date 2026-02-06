@@ -1612,7 +1612,7 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath, false)
+            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath, false, traceId)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
