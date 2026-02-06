@@ -1152,6 +1152,9 @@ public class IoComposeServiceDatabase {
             throw new RuntimeException("开始时间戳不能大于结束时间戳!");
 
         }
+        if (reqStartTimestamp < 0) {
+            reqStartTimestamp = 0L;
+        }
         if (reqStartTimestamp > (long) (totalSize / shardNum) * (shardNum - 1) * getConfigPer()) {
             set.add(parentTable.concat("_").concat(String.valueOf(shardNum - 1)));
         }

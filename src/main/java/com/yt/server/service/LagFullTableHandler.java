@@ -82,13 +82,17 @@ public class LagFullTableHandler implements Callable<List<UniPoint>> {
             }
             innerCountDownLatch.await();
             for (Future<List<UniPoint>> future : resultList) {
-                uniPointList.addAll(future.get());
+                List<UniPoint> list = future.get();
+                if (list != null) {
+                    uniPointList.addAll(list);
+                }
             }
         } catch (Exception e) {
             logger.error(LagFullTableHandler.class.getName(), e);
-            throw e;
+            // throw e;
+        } finally {
+            pool.shutdown();
         }
-        pool.shutdown();
         return uniPointList;
     }
 }
