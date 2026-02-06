@@ -178,7 +178,9 @@ public class HandleWasteTimeService {
                     String originalRegionCountSql = "select count(*) from " + tableName.concat("_").concat(String.valueOf(i));
                     Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
                     if (eachNum == null || eachNum == 0) {
-                        currentShardNum = i - 1;
+                        if (i != 0) {
+                            currentShardNum = i - 1;
+                        }
                         break;
                     }
                 }
