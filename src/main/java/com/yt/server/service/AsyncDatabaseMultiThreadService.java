@@ -29,6 +29,12 @@ public class AsyncDatabaseMultiThreadService {
 
     private static final String ENCRYPTION_KEY = "youtak%_trace";
     private static final String ENCRYPTED_FILE_EXTENSION = ".trace";
+    private static final Set<String> GLOBAL_TRACE_TABLES = new HashSet<>(Arrays.asList(
+            "table_num_info",
+            "trace_field_meta",
+            "trace_table_related_info",
+            "trace_timestamp_statistics"
+    ));
 
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
@@ -211,7 +217,8 @@ public class AsyncDatabaseMultiThreadService {
                         // 例如: trace158.trace, trace158_0.trace, trace158_downsampling_xxx.trace 都会被保留
                         // 而 trace1.trace, trace27_3.trace 会被过滤掉
                         if (fileName.equals(originalTableName) ||
-                                fileName.startsWith(originalTableName + "_")) {
+                                fileName.startsWith(originalTableName + "_") ||
+                                GLOBAL_TRACE_TABLES.contains(fileName)) {
                             encryptedFiles.add(file);
                         }
                     }
@@ -222,7 +229,8 @@ public class AsyncDatabaseMultiThreadService {
                 // 单文件模式也需要检查前缀
                 String fileName = sourceFile.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
                 if (fileName.equals(originalTableName) ||
-                        fileName.startsWith(originalTableName + "_")) {
+                        fileName.startsWith(originalTableName + "_") ||
+                        GLOBAL_TRACE_TABLES.contains(fileName)) {
                     encryptedFiles.add(sourceFile);
                 } else {
                     updateTaskStatus(taskId, "error", 0,
