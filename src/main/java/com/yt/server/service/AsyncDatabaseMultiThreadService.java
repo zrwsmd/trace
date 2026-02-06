@@ -38,11 +38,15 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
-                                               boolean autoFinish) {
+                                               boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         try {
+            TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            //只导入trace158的表，当前的originalTableName就是trace158
+            String originalTableName = traceTableRelatedInfo.getTableName();
+
             updateTaskStatus(taskId, "running", 0, "初始化导入任务...");
-            logger.debug("开始导入: " + sqlFilePath);
+            logger.debug("开始导入: " + sqlFilePath + ", 只导入表前缀: " + originalTableName);
 
             File sourceFile = new File(sqlFilePath);
             List<File> sqlFiles = new ArrayList<>();
@@ -50,19 +54,42 @@ public class AsyncDatabaseMultiThreadService {
             if (sourceFile.isDirectory()) {
                 File[] files = sourceFile.listFiles((dir, name) -> name.toLowerCase().endsWith(".sql"));
                 if (files != null && files.length > 0) {
-                    sqlFiles.addAll(Arrays.asList(files));
+                    // 过滤只保留符合 originalTableName 前缀的文件
+                    for (File file : files) {
+                        String fileName = file.getName().replace(".sql", "");
+                        // 检查文件名是否以 originalTableName 开头
+                        // 例如: trace158.sql, trace158_0.sql, trace158_downsampling_xxx.sql 都会被保留
+                        // 而 trace1.sql, trace27_3.sql 会被过滤掉
+                        if (fileName.equals(originalTableName) ||
+                                fileName.startsWith(originalTableName + "_")) {
+                            sqlFiles.add(file);
+                        }
+                    }
+                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}",
+                            files.length, originalTableName, sqlFiles.size());
                 }
             } else if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(".sql")) {
-                sqlFiles.add(sourceFile);
+                // 单文件模式也需要检查前缀
+                String fileName = sourceFile.getName().replace(".sql", "");
+                if (fileName.equals(originalTableName) ||
+                        fileName.startsWith(originalTableName + "_")) {
+                    sqlFiles.add(sourceFile);
+                } else {
+                    updateTaskStatus(taskId, "error", 0,
+                            "文件 " + sourceFile.getName() + " 不匹配表前缀 " + originalTableName);
+                    return CompletableFuture.completedFuture("error: File prefix mismatch");
+                }
             }
 
             if (sqlFiles.isEmpty()) {
-                updateTaskStatus(taskId, "error", 0, "没有找到需要导入的SQL文件: " + sqlFilePath);
-                return CompletableFuture.completedFuture("error: No SQL files found");
+                updateTaskStatus(taskId, "error", 0,
+                        "没有找到匹配表前缀 '" + originalTableName + "' 的SQL文件: " + sqlFilePath);
+                return CompletableFuture.completedFuture("error: No matching SQL files found");
             }
 
             int totalFiles = sqlFiles.size();
-            updateTaskStatus(taskId, "running", 5, "准备导入 " + totalFiles + " 个文件...");
+            updateTaskStatus(taskId, "running", 5,
+                    "准备导入 " + totalFiles + " 个匹配 '" + originalTableName + "' 的文件...");
 
             int threadCount = Math.min(totalFiles, Math.max(2, Runtime.getRuntime().availableProcessors() * 2));
             executor = Executors.newFixedThreadPool(threadCount);
@@ -77,6 +104,7 @@ public class AsyncDatabaseMultiThreadService {
             for (File sqlFile : sqlFiles) {
                 executor.submit(() -> {
                     try {
+                        logger.info("正在处理表: {}", sqlFile.getName().replace(".sql", ""));
                         importTable(databaseName, sqlFile.getAbsolutePath(), binPath);
                     } catch (Exception e) {
                         errorCount.incrementAndGet();
@@ -102,7 +130,8 @@ public class AsyncDatabaseMultiThreadService {
                 return CompletableFuture.completedFuture("warning: " + errorMsg);
             } else {
                 if (autoFinish) {
-                    updateTaskStatus(taskId, "success", 100, "导入完成！共 " + totalFiles + " 个文件");
+                    updateTaskStatus(taskId, "success", 100,
+                            "导入完成！共 " + totalFiles + " 个 '" + originalTableName + "' 相关表");
                 }
                 return CompletableFuture.completedFuture("success");
             }

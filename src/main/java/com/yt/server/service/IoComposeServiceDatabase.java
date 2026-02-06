@@ -1517,7 +1517,7 @@ public class IoComposeServiceDatabase {
             }
             // 启动异步任务
             asyncDatabaseMultiThreadService
-                    .loadAsync(vsCodeReqParam.getTaskId(), loadedPath, DATABASE_NAME, binPath, false)
+                    .loadAsync(vsCodeReqParam.getTaskId(), loadedPath, DATABASE_NAME, binPath, false, traceId)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
