@@ -164,8 +164,9 @@ public class AsyncDatabaseMultiThreadService {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             //只导入trace158的表，当前的originalTableName就是trace158
             String originalTableName = traceTableRelatedInfo.getTableName();
+
             updateTaskStatus(taskId, "running", 0, "初始化加密导入任务...");
-            logger.debug("开始解密并导入: " + encryptedFilePath);
+            logger.debug("开始解密并导入: " + encryptedFilePath + ", 只导入表前缀: " + originalTableName);
 
             File sourceFile = new File(encryptedFilePath);
             List<File> encryptedFiles = new ArrayList<>();
@@ -174,19 +175,43 @@ public class AsyncDatabaseMultiThreadService {
                 File[] files = sourceFile
                         .listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
                 if (files != null && files.length > 0) {
-                    encryptedFiles.addAll(Arrays.asList(files));
+                    // 过滤只保留符合 originalTableName 前缀的文件
+                    for (File file : files) {
+                        String fileName = file.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
+                        // 检查文件名是否以 originalTableName 开头
+                        // 例如: trace158.trace, trace158_0.trace, trace158_downsampling_xxx.trace 都会被保留
+                        // 而 trace1.trace, trace27_3.trace 会被过滤掉
+                        if (fileName.equals(originalTableName) ||
+                                fileName.startsWith(originalTableName + "_")) {
+                            encryptedFiles.add(file);
+                        }
+                    }
+                    logger.info("总文件数: {}, 过滤后匹配 '{}' 前缀的文件数: {}",
+                            files.length, originalTableName, encryptedFiles.size());
                 }
             } else if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION)) {
-                encryptedFiles.add(sourceFile);
+                // 单文件模式也需要检查前缀
+                String fileName = sourceFile.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
+                if (fileName.equals(originalTableName) ||
+                        fileName.startsWith(originalTableName + "_")) {
+                    encryptedFiles.add(sourceFile);
+                } else {
+                    updateTaskStatus(taskId, "error", 0,
+                            "文件 " + sourceFile.getName() + " 不匹配表前缀 " + originalTableName);
+                    return CompletableFuture.completedFuture("error: File prefix mismatch");
+                }
             }
+            logger.info("encryptedFiles={}", encryptedFiles);
 
             if (encryptedFiles.isEmpty()) {
-                updateTaskStatus(taskId, "error", 0, "没有找到需要导入的加密文件: " + encryptedFilePath);
-                return CompletableFuture.completedFuture("error: No encrypted files found");
+                updateTaskStatus(taskId, "error", 0,
+                        "没有找到匹配表前缀 '" + originalTableName + "' 的加密文件: " + encryptedFilePath);
+                return CompletableFuture.completedFuture("error: No matching encrypted files found");
             }
 
             int totalFiles = encryptedFiles.size();
-            updateTaskStatus(taskId, "running", 5, "准备解密并导入 " + totalFiles + " 个文件...");
+            updateTaskStatus(taskId, "running", 5,
+                    "准备解密并导入 " + totalFiles + " 个匹配 '" + originalTableName + "' 的文件...");
 
             tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_" + System.currentTimeMillis());
             if (!tempDir.mkdirs()) {
@@ -213,6 +238,7 @@ public class AsyncDatabaseMultiThreadService {
                         tempSqlFile = new File(finalTempDir, tableName + ".sql");
                         tempSqlFiles.add(tempSqlFile);
 
+                        logger.debug("正在处理表: {}", tableName);
                         decryptFile(encryptedFile.getAbsolutePath(), tempSqlFile.getAbsolutePath());
                         importTable(databaseName, tempSqlFile.getAbsolutePath(), binPath);
 
@@ -232,6 +258,7 @@ public class AsyncDatabaseMultiThreadService {
 
             latch.await();
 
+            // 清理临时文件
             for (File tempFile : tempSqlFiles) {
                 if (tempFile.exists()) {
                     tempFile.delete();
@@ -249,7 +276,8 @@ public class AsyncDatabaseMultiThreadService {
                 return CompletableFuture.completedFuture("warning: " + errorMsg);
             } else {
                 if (autoFinish) {
-                    updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
+                    updateTaskStatus(taskId, "success", 100,
+                            "解密导入完成！共 " + totalFiles + " 个 '" + originalTableName + "' 相关表");
                 }
                 return CompletableFuture.completedFuture("success");
             }
