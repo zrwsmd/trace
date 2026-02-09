@@ -855,7 +855,7 @@ public class AsyncDatabaseMultiThreadService {
     }
 
     @Async
-    public CompletableFuture<String> backupZipAsync(String taskId, String savePath,
+    public CompletableFuture<String> backupZipEncryptedAsync(String taskId, String savePath,
                                                     String databaseName, Collection<String> tableNameList, String binPath) {
         ExecutorService executor = null;
         File tempExportDir = null;

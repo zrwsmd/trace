@@ -1103,7 +1103,7 @@ public class IoComposeServiceDatabase {
             // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
             // DATABASE_NAME, backUpTableList, 4);
             asyncDatabaseMultiThreadService
-                    .backupZipAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
+                    .backupZipEncryptedAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
                             binPath)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
