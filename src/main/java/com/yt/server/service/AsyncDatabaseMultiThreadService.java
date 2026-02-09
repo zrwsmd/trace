@@ -48,7 +48,6 @@ public class AsyncDatabaseMultiThreadService {
     public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
                                                boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
-        File tempExtractDir = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             //只导入trace158的表，当前的originalTableName就是trace158
@@ -200,7 +199,6 @@ public class AsyncDatabaseMultiThreadService {
                                                         String databaseName, String binPath, boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         File tempDir = null;
-        File tempExtractDir = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             //只导入trace158的表，当前的originalTableName就是trace158
