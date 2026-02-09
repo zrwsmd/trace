@@ -35,8 +35,7 @@ public class AsyncDatabaseMultiThreadService {
             "table_num_info",
             "trace_field_meta",
             "trace_table_related_info",
-            "trace_timestamp_statistics"
-    ));
+            "trace_timestamp_statistics"));
 
     private final Map<String, TaskStatus> taskStatusMap = new ConcurrentHashMap<>();
     private static final Logger logger = LoggerFactory.getLogger(AsyncDatabaseMultiThreadService.class);
@@ -50,7 +49,7 @@ public class AsyncDatabaseMultiThreadService {
         ExecutorService executor = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
-            //只导入trace158的表，当前的originalTableName就是trace158
+            // 只导入trace158的表，当前的originalTableName就是trace158
             String originalTableName = traceTableRelatedInfo.getTableName();
 
             updateTaskStatus(taskId, "running", 0, "初始化导入任务...");
@@ -201,7 +200,7 @@ public class AsyncDatabaseMultiThreadService {
         File tempDir = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
-            //只导入trace158的表，当前的originalTableName就是trace158
+            // 只导入trace158的表，当前的originalTableName就是trace158
             String originalTableName = traceTableRelatedInfo.getTableName();
 
             updateTaskStatus(taskId, "running", 0, "初始化加密导入任务...");
@@ -712,7 +711,8 @@ public class AsyncDatabaseMultiThreadService {
             // 1. 处理Zip解压
             if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(".zip")) {
                 updateTaskStatus(taskId, "running", 2, "正在解压文件: " + sourceFile.getName());
-                tempExtractDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_zip_enc_" + System.currentTimeMillis());
+                tempExtractDir = new File(System.getProperty("java.io.tmpdir"),
+                        "mysql_import_zip_enc_" + System.currentTimeMillis());
                 if (!tempExtractDir.mkdirs()) {
                     throw new RuntimeException("无法创建临时解压目录");
                 }
@@ -730,7 +730,8 @@ public class AsyncDatabaseMultiThreadService {
                 File[] nestedZipFiles = sourceFile.listFiles((dir, name) -> name.toLowerCase().endsWith(".zip"));
                 if (nestedZipFiles != null && nestedZipFiles.length > 0) {
                     if (tempExtractDir == null) {
-                        tempExtractDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_zip_enc_" + System.currentTimeMillis());
+                        tempExtractDir = new File(System.getProperty("java.io.tmpdir"),
+                                "mysql_import_zip_enc_" + System.currentTimeMillis());
                         if (!tempExtractDir.mkdirs()) {
                             throw new RuntimeException("无法创建临时解压目录");
                         }
@@ -747,7 +748,8 @@ public class AsyncDatabaseMultiThreadService {
                 }
 
                 for (File dirToScan : dirsToScan) {
-                    File[] files = dirToScan.listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
+                    File[] files = dirToScan
+                            .listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
                     if (files != null) {
                         for (File file : files) {
                             String fileName = file.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
@@ -784,7 +786,8 @@ public class AsyncDatabaseMultiThreadService {
             updateTaskStatus(taskId, "running", 5, "准备解密并导入 " + totalFiles + " 个文件...");
 
             // 专门用于存放解密后的.sql文件的临时目录
-            tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_decrypted_sqls_" + System.currentTimeMillis());
+            tempDir = new File(System.getProperty("java.io.tmpdir"),
+                    "mysql_import_decrypted_sqls_" + System.currentTimeMillis());
             if (!tempDir.mkdirs()) {
                 throw new RuntimeException("无法创建临时解密目录: " + tempDir.getAbsolutePath());
             }
@@ -807,11 +810,23 @@ public class AsyncDatabaseMultiThreadService {
                     try {
                         String tableName = encryptedFile.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
                         tempSqlFile = new File(finalTempDir, tableName + ".sql");
-                        tempSqlFiles.add(tempSqlFile);
 
                         logger.debug("正在处理表: {}", tableName);
                         decryptFile(encryptedFile.getAbsolutePath(), tempSqlFile.getAbsolutePath());
+
+                        // 立即删除加密源文件，节省空间
+                        if (encryptedFile.exists()) {
+                            encryptedFile.delete();
+                            logger.debug("已删除加密源文件: {}", encryptedFile.getName());
+                        }
+
                         importTable(databaseName, tempSqlFile.getAbsolutePath(), binPath);
+
+                        // 立即删除导入后的SQL文件
+                        if (tempSqlFile.exists()) {
+                            tempSqlFile.delete();
+                            logger.debug("已删除临时SQL文件: {}", tempSqlFile.getName());
+                        }
 
                     } catch (Exception e) {
                         errorCount.incrementAndGet();
@@ -829,18 +844,19 @@ public class AsyncDatabaseMultiThreadService {
 
             latch.await();
 
-            // 清理导入生成的临时SQL文件
-            for (File tempFile : tempSqlFiles) {
-                if (tempFile.exists()) tempFile.delete();
+            // 最终兜底清理临时解密目录
+            if (tempDir.exists()) {
+                FileUtil.del(tempDir);
             }
-            if (tempDir.exists()) tempDir.delete();
 
             if (errorCount.get() > 0) {
                 String errorMsg = "解密导入完成但有 " + errorCount.get() + " 个错误: " + String.join("; ", errors);
-                if (autoFinish) updateTaskStatus(taskId, "warning", 100, errorMsg);
+                if (autoFinish)
+                    updateTaskStatus(taskId, "warning", 100, errorMsg);
                 return CompletableFuture.completedFuture("warning: " + errorMsg);
             } else {
-                if (autoFinish) updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
+                if (autoFinish)
+                    updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
                 return CompletableFuture.completedFuture("success");
             }
 
@@ -849,15 +865,17 @@ public class AsyncDatabaseMultiThreadService {
             updateTaskStatus(taskId, "error", 0, "解密导入失败: " + e.getMessage());
             return CompletableFuture.completedFuture("error: " + e.getMessage());
         } finally {
-            if (executor != null) executor.shutdown();
+            if (executor != null)
+                executor.shutdown();
             // 清理Zip解压临时目录
-            if (tempExtractDir != null) FileUtil.del(tempExtractDir);
+            if (tempExtractDir != null)
+                FileUtil.del(tempExtractDir);
         }
     }
 
     @Async
     public CompletableFuture<String> backupZipEncryptedAsync(String taskId, String savePath,
-                                                    String databaseName, Collection<String> tableNameList, String binPath) {
+                                                             String databaseName, Collection<String> tableNameList, String binPath) {
         ExecutorService executor = null;
         File tempExportDir = null;
         try {
@@ -865,7 +883,8 @@ public class AsyncDatabaseMultiThreadService {
             logger.debug("开始加密导出数据库: " + databaseName + " 到: " + savePath);
 
             // 创建临时导出目录
-            tempExportDir = new File(System.getProperty("java.io.tmpdir"), "mysql_export_backup_enc_" + System.currentTimeMillis());
+            tempExportDir = new File(System.getProperty("java.io.tmpdir"),
+                    "mysql_export_backup_enc_" + System.currentTimeMillis());
             if (!tempExportDir.mkdirs()) {
                 throw new RuntimeException("无法创建临时导出目录: " + tempExportDir.getAbsolutePath());
             }
@@ -931,9 +950,11 @@ public class AsyncDatabaseMultiThreadService {
                 } else if (savePath.toLowerCase().endsWith(".zip")) {
                     zipFile = saveTarget;
                     File parent = zipFile.getParentFile();
-                    if (parent != null && !parent.exists()) parent.mkdirs();
+                    if (parent != null && !parent.exists())
+                        parent.mkdirs();
                 } else {
-                    if (!saveTarget.exists()) saveTarget.mkdirs();
+                    if (!saveTarget.exists())
+                        saveTarget.mkdirs();
                     String zipName = String.format("backup_enc_%s_%d.zip", taskId, System.currentTimeMillis());
                     zipFile = new File(saveTarget, zipName);
                 }
@@ -949,8 +970,10 @@ public class AsyncDatabaseMultiThreadService {
             updateTaskStatus(taskId, "error", 0, "加密导出失败: " + e.getMessage());
             return CompletableFuture.completedFuture("error: " + e.getMessage());
         } finally {
-            if (executor != null) executor.shutdown();
-            if (tempExportDir != null) FileUtil.del(tempExportDir);
+            if (executor != null)
+                executor.shutdown();
+            if (tempExportDir != null)
+                FileUtil.del(tempExportDir);
         }
     }
 
