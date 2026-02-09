@@ -783,9 +783,10 @@ public class AsyncDatabaseMultiThreadService {
             int totalFiles = encryptedFiles.size();
             updateTaskStatus(taskId, "running", 5, "准备解密并导入 " + totalFiles + " 个文件...");
 
-            tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_" + System.currentTimeMillis());
+            // 专门用于存放解密后的.sql文件的临时目录
+            tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_decrypted_sqls_" + System.currentTimeMillis());
             if (!tempDir.mkdirs()) {
-                throw new RuntimeException("无法创建临时目录: " + tempDir.getAbsolutePath());
+                throw new RuntimeException("无法创建临时解密目录: " + tempDir.getAbsolutePath());
             }
             final File finalTempDir = tempDir;
 
