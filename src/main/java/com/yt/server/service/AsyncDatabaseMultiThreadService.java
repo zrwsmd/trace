@@ -1,5 +1,7 @@
 package com.yt.server.service;
 
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.ZipUtil;
 import com.yt.server.entity.TraceTableRelatedInfo;
 import com.yt.server.mapper.TraceTableRelatedInfoMapper;
 import org.slf4j.Logger;
@@ -46,6 +48,7 @@ public class AsyncDatabaseMultiThreadService {
     public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
                                                boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
+        File tempExtractDir = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             //只导入trace158的表，当前的originalTableName就是trace158
@@ -197,6 +200,7 @@ public class AsyncDatabaseMultiThreadService {
                                                         String databaseName, String binPath, boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         File tempDir = null;
+        File tempExtractDir = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
             //只导入trace158的表，当前的originalTableName就是trace158
@@ -689,6 +693,266 @@ public class AsyncDatabaseMultiThreadService {
                 binPath, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, sql);
         Process process = Runtime.getRuntime().exec(command);
         process.waitFor();
+    }
+
+    @Async
+    public CompletableFuture<String> loadEncryptedUnzipAsync(String taskId, String encryptedFilePath,
+                                                             String databaseName, String binPath, boolean autoFinish, Long traceId) {
+        ExecutorService executor = null;
+        File tempDir = null;
+        File tempExtractDir = null;
+        try {
+            TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
+            String originalTableName = traceTableRelatedInfo.getTableName();
+
+            updateTaskStatus(taskId, "running", 0, "初始化加密导入任务...");
+            logger.debug("开始解密并导入: " + encryptedFilePath + ", 只导入表前缀: " + originalTableName);
+
+            File sourceFile = new File(encryptedFilePath);
+            List<File> encryptedFiles = new ArrayList<>();
+
+            // 1. 处理Zip解压
+            if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(".zip")) {
+                updateTaskStatus(taskId, "running", 2, "正在解压文件: " + sourceFile.getName());
+                tempExtractDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_zip_enc_" + System.currentTimeMillis());
+                if (!tempExtractDir.mkdirs()) {
+                    throw new RuntimeException("无法创建临时解压目录");
+                }
+                ZipUtil.unzip(sourceFile, tempExtractDir);
+                sourceFile = tempExtractDir; // 指向解压后的目录
+                logger.debug("ZIP文件已解压至: " + tempExtractDir.getAbsolutePath());
+            }
+
+            // 2. 扫描文件 (支持目录递归或单个文件)
+            if (sourceFile.isDirectory()) {
+                List<File> dirsToScan = new ArrayList<>();
+                dirsToScan.add(sourceFile);
+
+                // 检查目录下是否还有zip文件需要解压
+                File[] nestedZipFiles = sourceFile.listFiles((dir, name) -> name.toLowerCase().endsWith(".zip"));
+                if (nestedZipFiles != null && nestedZipFiles.length > 0) {
+                    if (tempExtractDir == null) {
+                        tempExtractDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_zip_enc_" + System.currentTimeMillis());
+                        if (!tempExtractDir.mkdirs()) {
+                            throw new RuntimeException("无法创建临时解压目录");
+                        }
+                    }
+                    updateTaskStatus(taskId, "running", 2, "正在解压目录下的嵌套ZIP文件...");
+                    for (File zip : nestedZipFiles) {
+                        try {
+                            ZipUtil.unzip(zip, tempExtractDir);
+                        } catch (Exception e) {
+                            logger.error("解压嵌套文件失败: " + zip.getName(), e);
+                        }
+                    }
+                    dirsToScan.add(tempExtractDir);
+                }
+
+                for (File dirToScan : dirsToScan) {
+                    File[] files = dirToScan.listFiles((dir, name) -> name.toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION));
+                    if (files != null) {
+                        for (File file : files) {
+                            String fileName = file.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
+                            if (fileName.equals(originalTableName) ||
+                                    fileName.startsWith(originalTableName + "_") ||
+                                    GLOBAL_TRACE_TABLES.contains(fileName)) {
+                                encryptedFiles.add(file);
+                            }
+                        }
+                    }
+                }
+                logger.info("扫描完成, 过滤后匹配 '{}' 前缀的文件数: {}(包含4个固定文件的导入)",
+                        originalTableName, encryptedFiles.size());
+
+            } else if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION)) {
+                String fileName = sourceFile.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
+                if (fileName.equals(originalTableName) ||
+                        fileName.startsWith(originalTableName + "_") ||
+                        GLOBAL_TRACE_TABLES.contains(fileName)) {
+                    encryptedFiles.add(sourceFile);
+                } else {
+                    updateTaskStatus(taskId, "error", 0, "文件不匹配表前缀 " + originalTableName);
+                    return CompletableFuture.completedFuture("error: File prefix mismatch");
+                }
+            }
+
+            if (encryptedFiles.isEmpty()) {
+                updateTaskStatus(taskId, "error", 0, "没有找到匹配表前缀 '" + originalTableName + "' 的加密文件");
+                return CompletableFuture.completedFuture("error: No matching encrypted files found");
+            }
+
+            // 3. 执行解密和导入
+            int totalFiles = encryptedFiles.size();
+            updateTaskStatus(taskId, "running", 5, "准备解密并导入 " + totalFiles + " 个文件...");
+
+            tempDir = new File(System.getProperty("java.io.tmpdir"), "mysql_import_" + System.currentTimeMillis());
+            if (!tempDir.mkdirs()) {
+                throw new RuntimeException("无法创建临时目录: " + tempDir.getAbsolutePath());
+            }
+            final File finalTempDir = tempDir;
+
+            int threadCount = Math.min(totalFiles, Math.max(2, Runtime.getRuntime().availableProcessors() * 2));
+            executor = Executors.newFixedThreadPool(threadCount);
+
+            AtomicInteger completedCount = new AtomicInteger(0);
+            AtomicInteger errorCount = new AtomicInteger(0);
+            List<String> errors = Collections.synchronizedList(new ArrayList<>());
+            CountDownLatch latch = new CountDownLatch(totalFiles);
+            List<File> tempSqlFiles = Collections.synchronizedList(new ArrayList<>());
+
+            updateTaskStatus(taskId, "running", 10, "并发解密导入中 (线程数: " + threadCount + ")...");
+
+            for (File encryptedFile : encryptedFiles) {
+                executor.submit(() -> {
+                    File tempSqlFile = null;
+                    try {
+                        String tableName = encryptedFile.getName().replace(ENCRYPTED_FILE_EXTENSION, "");
+                        tempSqlFile = new File(finalTempDir, tableName + ".sql");
+                        tempSqlFiles.add(tempSqlFile);
+
+                        logger.debug("正在处理表: {}", tableName);
+                        decryptFile(encryptedFile.getAbsolutePath(), tempSqlFile.getAbsolutePath());
+                        importTable(databaseName, tempSqlFile.getAbsolutePath(), binPath);
+
+                    } catch (Exception e) {
+                        errorCount.incrementAndGet();
+                        errors.add(encryptedFile.getName() + ": " + e.getMessage());
+                        logger.error("解密导入文件 " + encryptedFile.getName() + " 失败", e);
+                    } finally {
+                        int completed = completedCount.incrementAndGet();
+                        int progress = 10 + (int) ((completed / (double) totalFiles) * 85);
+                        updateTaskStatus(taskId, "running", progress,
+                                String.format("解密导入进度: %d/%d (失败: %d)", completed, totalFiles, errorCount.get()));
+                        latch.countDown();
+                    }
+                });
+            }
+
+            latch.await();
+
+            // 清理导入生成的临时SQL文件
+            for (File tempFile : tempSqlFiles) {
+                if (tempFile.exists()) tempFile.delete();
+            }
+            if (tempDir.exists()) tempDir.delete();
+
+            if (errorCount.get() > 0) {
+                String errorMsg = "解密导入完成但有 " + errorCount.get() + " 个错误: " + String.join("; ", errors);
+                if (autoFinish) updateTaskStatus(taskId, "warning", 100, errorMsg);
+                return CompletableFuture.completedFuture("warning: " + errorMsg);
+            } else {
+                if (autoFinish) updateTaskStatus(taskId, "success", 100, "解密导入完成！共 " + totalFiles + " 个文件");
+                return CompletableFuture.completedFuture("success");
+            }
+
+        } catch (Exception e) {
+            logger.error("解密导入任务异常", e);
+            updateTaskStatus(taskId, "error", 0, "解密导入失败: " + e.getMessage());
+            return CompletableFuture.completedFuture("error: " + e.getMessage());
+        } finally {
+            if (executor != null) executor.shutdown();
+            // 清理Zip解压临时目录
+            if (tempExtractDir != null) FileUtil.del(tempExtractDir);
+        }
+    }
+
+    @Async
+    public CompletableFuture<String> backupZipAsync(String taskId, String savePath,
+                                                    String databaseName, Collection<String> tableNameList, String binPath) {
+        ExecutorService executor = null;
+        File tempExportDir = null;
+        try {
+            updateTaskStatus(taskId, "running", 0, "初始化加密导出任务...");
+            logger.debug("开始加密导出数据库: " + databaseName + " 到: " + savePath);
+
+            // 创建临时导出目录
+            tempExportDir = new File(System.getProperty("java.io.tmpdir"), "mysql_export_backup_enc_" + System.currentTimeMillis());
+            if (!tempExportDir.mkdirs()) {
+                throw new RuntimeException("无法创建临时导出目录: " + tempExportDir.getAbsolutePath());
+            }
+            final File finalTempExportDir = tempExportDir;
+
+            List<String> tablesToExport;
+            if (tableNameList != null && !tableNameList.isEmpty()) {
+                tablesToExport = new ArrayList<>(tableNameList);
+            } else {
+                updateTaskStatus(taskId, "running", 2, "获取表列表...");
+                tablesToExport = getAllTables(databaseName, binPath);
+            }
+
+            if (tablesToExport.isEmpty()) {
+                updateTaskStatus(taskId, "error", 0, "没有找到需要导出的表");
+                return CompletableFuture.completedFuture("error: No tables found");
+            }
+
+            int totalTables = tablesToExport.size();
+            updateTaskStatus(taskId, "running", 5, "准备加密导出 " + totalTables + " 张表...");
+
+            int threadCount = Math.min(totalTables, Math.max(2, Runtime.getRuntime().availableProcessors()));
+            executor = Executors.newFixedThreadPool(threadCount);
+
+            AtomicInteger completedCount = new AtomicInteger(0);
+            AtomicInteger errorCount = new AtomicInteger(0);
+            List<String> errors = Collections.synchronizedList(new ArrayList<>());
+            CountDownLatch latch = new CountDownLatch(totalTables);
+
+            for (String tableName : tablesToExport) {
+                executor.submit(() -> {
+                    try {
+                        exportTableEncrypted(databaseName, tableName, finalTempExportDir.getAbsolutePath(), binPath);
+                    } catch (Exception e) {
+                        errorCount.incrementAndGet();
+                        errors.add(tableName + ": " + e.getMessage());
+                        logger.error("加密导出表 " + tableName + " 失败", e);
+                    } finally {
+                        int completed = completedCount.incrementAndGet();
+                        int progress = 5 + (int) ((completed / (double) totalTables) * 90);
+                        updateTaskStatus(taskId, "running", progress,
+                                String.format("加密导出进度: %d/%d (失败: %d)", completed, totalTables, errorCount.get()));
+                        latch.countDown();
+                    }
+                });
+            }
+
+            latch.await();
+
+            if (errorCount.get() > 0) {
+                String errorMsg = "加密导出完成但有 " + errorCount.get() + " 个错误: " + String.join("; ", errors);
+                updateTaskStatus(taskId, "warning", 100, errorMsg);
+                return CompletableFuture.completedFuture("warning: " + errorMsg);
+            } else {
+                // 压缩打包
+                updateTaskStatus(taskId, "running", 95, "正在压缩打包...");
+                File saveTarget = new File(savePath);
+                File zipFile;
+
+                if (saveTarget.isDirectory()) {
+                    String zipName = String.format("backup_enc_%s_%d.zip", taskId, System.currentTimeMillis());
+                    zipFile = new File(saveTarget, zipName);
+                } else if (savePath.toLowerCase().endsWith(".zip")) {
+                    zipFile = saveTarget;
+                    File parent = zipFile.getParentFile();
+                    if (parent != null && !parent.exists()) parent.mkdirs();
+                } else {
+                    if (!saveTarget.exists()) saveTarget.mkdirs();
+                    String zipName = String.format("backup_enc_%s_%d.zip", taskId, System.currentTimeMillis());
+                    zipFile = new File(saveTarget, zipName);
+                }
+
+                ZipUtil.zip(tempExportDir.getAbsolutePath(), zipFile.getAbsolutePath());
+
+                updateTaskStatus(taskId, "success", 100, "加密导出完成！已保存为: " + zipFile.getName());
+                return CompletableFuture.completedFuture("success");
+            }
+
+        } catch (Exception e) {
+            logger.error("加密导出任务异常", e);
+            updateTaskStatus(taskId, "error", 0, "加密导出失败: " + e.getMessage());
+            return CompletableFuture.completedFuture("error: " + e.getMessage());
+        } finally {
+            if (executor != null) executor.shutdown();
+            if (tempExportDir != null) FileUtil.del(tempExportDir);
+        }
     }
 
     public static class TaskStatus {

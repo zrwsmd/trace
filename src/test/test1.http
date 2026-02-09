@@ -32,7 +32,7 @@ Content-Type: application/json
   "binPath": "D://trace-mysql//bin//",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/backup_task_1"
+    "path": "E:/trace-dump/backup_task_2"
   }
 }
 
@@ -47,7 +47,7 @@ Content-Type: application/json
   "binPath": "D://trace-mysql//bin//",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/backup_task_7"
+    "path": "E:/trace-dump/backup_task_8"
   }
 }
 
@@ -62,7 +62,7 @@ Content-Type: application/json
   "binPath": "D://trace-mysql//bin//",
   "tData": {
     "id": 768962893423,
-    "path": "E:/trace-dump/backup_task_4"
+    "path": "E:/trace-dump/backup_task_8"
   }
 }
 
