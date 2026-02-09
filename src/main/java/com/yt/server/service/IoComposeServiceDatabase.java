@@ -1103,7 +1103,7 @@ public class IoComposeServiceDatabase {
             // asyncMySqlShellService.dumpAsync(vsCodeReqParam.getTaskId(), savePath,
             // DATABASE_NAME, backUpTableList, 4);
             asyncDatabaseMultiThreadService
-                    .backupEncryptedAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
+                    .backupZipAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
                             binPath)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
@@ -1612,7 +1612,7 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadEncryptedAsync(taskId, loadedPath, DATABASE_NAME, binPath, false, traceId)
+            asyncDatabaseMultiThreadService.loadEncryptedUnzipAsync(taskId, loadedPath, DATABASE_NAME, binPath, false, traceId)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
