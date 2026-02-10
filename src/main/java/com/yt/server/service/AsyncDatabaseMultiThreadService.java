@@ -882,6 +882,13 @@ public class AsyncDatabaseMultiThreadService {
             updateTaskStatus(taskId, "running", 0, "初始化加密导出任务...");
             logger.debug("开始加密导出数据库: " + databaseName + " 到: " + savePath);
 
+            // 优化：如果要保存的路径是目录且由于重试等原因已经存在文件，先清空，避免生成多个zip包
+            File saveTargetToCheck = new File(savePath);
+            if (saveTargetToCheck.exists() && saveTargetToCheck.isDirectory()) {
+                FileUtil.clean(saveTargetToCheck);
+                logger.info("保存目录存在其他内容,已清空目标目录: " + savePath);
+            }
+
             // 创建临时导出目录
             tempExportDir = new File(System.getProperty("java.io.tmpdir"),
                     "mysql_export_backup_enc_" + System.currentTimeMillis());
