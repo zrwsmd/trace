@@ -1612,29 +1612,52 @@ public class IoComposeServiceDatabase {
             }
             String taskId = vsCodeReqParam.getTaskId();
             // 启动异步任务
-            asyncDatabaseMultiThreadService.loadEncryptedUnzipAsync(taskId, loadedPath, DATABASE_NAME, binPath, false, traceId)
+            asyncDatabaseMultiThreadService
+                    .loadEncryptedUnzipAsync(taskId, loadedPath, DATABASE_NAME, binPath, false, traceId)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async load successfully executed");
                             int currentShardNum = 0;
+                            //final long start = System.currentTimeMillis();
+                            List<CompletableFuture<Boolean>> futures = new ArrayList<>();
                             for (int i = 0; i < shardNum; i++) {
-                                String tableNameWithShard = traceTableRelatedInfo.getTableName().concat("_")
-                                        .concat(String.valueOf(i));
-                                String originalRegionCountSql = "select count(*) from " + tableNameWithShard;
-                                Integer eachNum = jdbcTemplate.queryForObject(originalRegionCountSql, Integer.class);
-                                if (eachNum == null || eachNum == 0) {
-                                    currentShardNum = i - 1;
-                                    break;
-                                } else {
-                                    // 如果分片数为9的话不需要加1了，要不然就超出成为10了
-                                    if (i < shardNum - 1) {
-                                        currentShardNum = currentShardNum + 1;
+                                int finalI = i;
+                                CompletableFuture<Boolean> future = CompletableFuture.supplyAsync(() -> {
+                                    try {
+                                        String tableNameWithShard = traceTableRelatedInfo.getTableName().concat("_")
+                                                .concat(String.valueOf(finalI));
+                                        // 优化：使用 limit 1 判断是否存在数据，比 count(*) 快很多
+                                        String checkSql = "SELECT 1 FROM " + tableNameWithShard + " LIMIT 1";
+                                        List<Integer> queryResult = jdbcTemplate.query(checkSql, (rs, rowNum) -> 1);
+                                        return !queryResult.isEmpty();
+                                    } catch (Exception e) {
+                                        logger.warn("Check shard table failed: " + e.getMessage());
+                                        return false;
                                     }
+                                }, pool);
+                                futures.add(future);
+                            }
 
+                            // 等待所有查询完成
+                            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+                            currentShardNum = -1;
+                            for (int i = 0; i < shardNum; i++) {
+                                try {
+                                    if (futures.get(i).get()) {
+                                        currentShardNum = i;
+                                    } else {
+                                        break; // 遇到第一个空表就停止，认为是最后一个有效分片
+                                    }
+                                } catch (Exception e) {
+                                    break;
                                 }
                             }
+                            //final long end = System.currentTimeMillis();
+                            //logger.info("trace async load time: " + (end - start) + "ms");
                             String originalRegionCountSql = "select max(id) from " + traceTableRelatedInfo
                                     .getTableName().concat("_").concat(String.valueOf(currentShardNum));
+
                             List<TraceParamCount> traceParamCountList = jdbcTemplate.query(originalRegionCountSql,
                                     (rs, rowNum) -> {
                                         TraceParamCount traceParamCount = new TraceParamCount();
@@ -1642,6 +1665,7 @@ public class IoComposeServiceDatabase {
                                         return traceParamCount;
                                     });
                             TraceParamCount traceParamCount = traceParamCountList.get(0);
+
                             // 将结果存入任务状态，供前端查询
                             asyncDatabaseMultiThreadService.updateTaskResult(vsCodeReqParam.getTaskId(), 0,
                                     traceParamCount.getMax());
