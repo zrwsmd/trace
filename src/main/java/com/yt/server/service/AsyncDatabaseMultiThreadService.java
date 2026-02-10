@@ -21,6 +21,9 @@ import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.Enumeration;
 
 @Service
 public class AsyncDatabaseMultiThreadService {
@@ -45,7 +48,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadAsync(String taskId, String sqlFilePath, String databaseName, String binPath,
-                                               boolean autoFinish, Long traceId) {
+            boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         try {
             TraceTableRelatedInfo traceTableRelatedInfo = traceTableRelatedInfoMapper.selectByPrimaryKey(traceId);
@@ -195,7 +198,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadEncryptedAsync(String taskId, String encryptedFilePath,
-                                                        String databaseName, String binPath, boolean autoFinish, Long traceId) {
+            String databaseName, String binPath, boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         File tempDir = null;
         try {
@@ -335,7 +338,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> backupAsync(String taskId, String savePath,
-                                                 String databaseName, Collection<String> tableNameList, String binPath) {
+            String databaseName, Collection<String> tableNameList, String binPath) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化导出任务...");
@@ -416,7 +419,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> backupEncryptedAsync(String taskId, String savePath,
-                                                          String databaseName, Collection<String> tableNameList, String binPath) {
+            String databaseName, Collection<String> tableNameList, String binPath) {
         ExecutorService executor = null;
         try {
             updateTaskStatus(taskId, "running", 0, "初始化加密导出任务...");
@@ -590,8 +593,8 @@ public class AsyncDatabaseMultiThreadService {
         cipher.init(Cipher.ENCRYPT_MODE, keySpec, chaChaSpec);
 
         try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(inputFile), 1024 * 1024);
-             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024);
-             CipherOutputStream cos = new CipherOutputStream(bos, cipher)) {
+                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024);
+                CipherOutputStream cos = new CipherOutputStream(bos, cipher)) {
 
             byte[] buffer = new byte[1024 * 1024]; // 1MB缓冲区
             int bytesRead;
@@ -610,8 +613,8 @@ public class AsyncDatabaseMultiThreadService {
         cipher.init(Cipher.DECRYPT_MODE, keySpec, chaChaSpec);
 
         try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(inputFile), 1024 * 1024);
-             CipherInputStream cis = new CipherInputStream(bis, cipher);
-             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024)) {
+                CipherInputStream cis = new CipherInputStream(bis, cipher);
+                BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(outputFile), 1024 * 1024)) {
 
             byte[] buffer = new byte[1024 * 1024]; // 1MB缓冲区
             int bytesRead;
@@ -694,7 +697,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> loadEncryptedUnzipAsync(String taskId, String encryptedFilePath,
-                                                             String databaseName, String binPath, boolean autoFinish, Long traceId) {
+            String databaseName, String binPath, boolean autoFinish, Long traceId) {
         ExecutorService executor = null;
         File tempDir = null;
         File tempExtractDir = null;
@@ -710,6 +713,25 @@ public class AsyncDatabaseMultiThreadService {
 
             // 1. 处理Zip解压
             if (sourceFile.isFile() && sourceFile.getName().toLowerCase().endsWith(".zip")) {
+                // 校验Zip包内容格式
+                try (ZipFile zipFile = new ZipFile(sourceFile)) {
+                    Enumeration<? extends ZipEntry> entries = zipFile.entries();
+                    while (entries.hasMoreElements()) {
+                        ZipEntry entry = entries.nextElement();
+                        if (!entry.isDirectory()) {
+                            if (!entry.getName().toLowerCase().endsWith(ENCRYPTED_FILE_EXTENSION)) {
+                                updateTaskStatus(taskId, "error", 0,
+                                        "非法的数据格式:压缩包内包含非.trace文件(" + entry.getName() + ")");
+                                return CompletableFuture.completedFuture("error: Illegal data format");
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("ZIP文件校验失败: " + sourceFile.getName(), e);
+                    updateTaskStatus(taskId, "error", 0, "ZIP文件校验失败: " + e.getMessage());
+                    return CompletableFuture.completedFuture("error: Zip validation failed");
+                }
+
                 updateTaskStatus(taskId, "running", 2, "正在解压文件: " + sourceFile.getName());
                 tempExtractDir = new File(System.getProperty("java.io.tmpdir"),
                         "mysql_import_zip_enc_" + System.currentTimeMillis());
@@ -875,7 +897,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> backupZipEncryptedAsync(String taskId, String savePath,
-                                                             String databaseName, Collection<String> tableNameList, String binPath, Long traceId) {
+            String databaseName, Collection<String> tableNameList, String binPath, Long traceId) {
         ExecutorService executor = null;
         File tempExportDir = null;
         try {
