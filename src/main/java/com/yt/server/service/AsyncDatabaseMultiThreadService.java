@@ -875,7 +875,7 @@ public class AsyncDatabaseMultiThreadService {
 
     @Async
     public CompletableFuture<String> backupZipEncryptedAsync(String taskId, String savePath,
-                                                             String databaseName, Collection<String> tableNameList, String binPath) {
+                                                             String databaseName, Collection<String> tableNameList, String binPath, Long traceId) {
         ExecutorService executor = null;
         File tempExportDir = null;
         try {
@@ -952,7 +952,7 @@ public class AsyncDatabaseMultiThreadService {
                 File zipFile;
 
                 if (saveTarget.isDirectory()) {
-                    String zipName = String.format("backup_enc_%s_%d.zip", taskId, System.currentTimeMillis());
+                    String zipName = String.format("backup_%s.zip", traceId);
                     zipFile = new File(saveTarget, zipName);
                 } else if (savePath.toLowerCase().endsWith(".zip")) {
                     zipFile = saveTarget;
@@ -962,7 +962,7 @@ public class AsyncDatabaseMultiThreadService {
                 } else {
                     if (!saveTarget.exists())
                         saveTarget.mkdirs();
-                    String zipName = String.format("backup_enc_%s_%d.zip", taskId, System.currentTimeMillis());
+                    String zipName = String.format("backup_%s.zip", traceId);
                     zipFile = new File(saveTarget, zipName);
                 }
 

@@ -1130,7 +1130,7 @@ public class IoComposeServiceDatabase {
             // DATABASE_NAME, backUpTableList, 4);
             asyncDatabaseMultiThreadService
                     .backupZipEncryptedAsync(vsCodeReqParam.getTaskId(), savePath, DATABASE_NAME, backUpTableList,
-                            binPath)
+                            binPath, traceId)
                     .whenComplete((result, ex) -> {
                         if (ex == null && "success".equals(result)) {
                             logger.info("trace async save successfully executed");
