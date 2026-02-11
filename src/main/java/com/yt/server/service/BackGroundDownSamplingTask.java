@@ -33,6 +33,8 @@ public class BackGroundDownSamplingTask implements Runnable {
             for (Integer downRate : IoComposeServiceDatabase.data) {
                 String eachVarNameDownsamplingTableName = downsamplingTableName.concat("_").concat(varName).concat("_")
                         .concat(String.valueOf(downRate));
+                String delSqlString = " DROP TABLE IF EXISTS " + "`" + eachVarNameDownsamplingTableName + "`" + ";";
+                jdbcTemplate.execute(delSqlString);
                 // 创建对应的降采样表
                 StringBuilder samplingSql = new StringBuilder();
                 samplingSql.append("CREATE TABLE " + "`").append(eachVarNameDownsamplingTableName).append("`")

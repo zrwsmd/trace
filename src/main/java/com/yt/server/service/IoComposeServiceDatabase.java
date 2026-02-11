@@ -261,12 +261,21 @@ public class IoComposeServiceDatabase {
                     tableName = "trace".concat(String.valueOf(seqNum + 1));
                 }
                 downsamplingTableName = tableName.concat("_downsampling");
-                TraceTimestampStatistics traceTimestampStatistics = new TraceTimestampStatistics();
-                traceTimestampStatistics.setTraceId(traceId);
-                traceTimestampStatistics.setTempTimestamp(0L);
-                traceTimestampStatistics.setLastEndTimestamp(0L);
-                traceTimestampStatistics.setReachedBatchNum(0);
-                traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
+                TraceTimestampStatistics originalTraceTimestampStatistics = traceTimestampStatisticsMapper.selectByPrimaryKey(traceId);
+                if(originalTraceTimestampStatistics != null){
+                    originalTraceTimestampStatistics.setTempTimestamp(0L);
+                    originalTraceTimestampStatistics.setLastEndTimestamp(0L);
+                    originalTraceTimestampStatistics.setReachedBatchNum(0);
+                    originalTraceTimestampStatistics.setTraceId(traceId);
+                    traceTimestampStatisticsMapper.updateByPrimaryKeySelective(originalTraceTimestampStatistics);
+                }else {
+                    TraceTimestampStatistics traceTimestampStatistics = new TraceTimestampStatistics();
+                    traceTimestampStatistics.setTraceId(traceId);
+                    traceTimestampStatistics.setTempTimestamp(0L);
+                    traceTimestampStatistics.setLastEndTimestamp(0L);
+                    traceTimestampStatistics.setReachedBatchNum(0);
+                    traceTimestampStatisticsMapper.insert(traceTimestampStatistics);
+                }
                 // handleWasteTimeService.insertDownsamplingData(traceId, jdbcTemplate,
                 // shardNum, filterList, getConfigPer(),"later");
             } else {
@@ -292,6 +301,8 @@ public class IoComposeServiceDatabase {
             List<Long> oldIdLists = traceFieldMetaList.stream().map(TraceFieldMeta::getId).toList();
             String oldFieldMetaIds = StringUtils.join(oldIdLists, ",");
             // 创建对应trace表
+            String delSqlString = " DROP TABLE IF EXISTS " + "`" + tableName + "`" + ";";
+            jdbcTemplate.execute(delSqlString);
             StringBuilder sql = new StringBuilder();
             sql.append(" CREATE TABLE " + "`").append(tableName).append("`").append("(");
             sql.append("`id` bigint NOT NULL,");
@@ -1221,9 +1232,12 @@ public class IoComposeServiceDatabase {
 
     private void generateShardingTable(String tableName, List<TraceFieldMeta> traceFieldMetaList, Long traceId) {
         for (int a = 0; a < shardNum; a++) {
-            StringBuilder sql = new StringBuilder();
+
             // sql.append("DROP TABLE IF EXISTS " +
             // "`").append(tableName.concat("_").concat(String.valueOf(i))).append("`").append(";");
+            String delSqlString = " DROP TABLE IF EXISTS " + "`" + tableName.concat("_").concat(String.valueOf(a)) + "`" + ";";
+            jdbcTemplate.execute(delSqlString);
+            StringBuilder sql = new StringBuilder();
             sql.append(" CREATE TABLE " + "`").append(tableName.concat("_").concat(String.valueOf(a))).append("`")
                     .append("(");
             sql.append("`id` bigint NOT NULL,");
