@@ -84,8 +84,6 @@ public class IoComposeServiceDatabase {
 
     public static final Integer shardNum = 10;
 
-    Set<String> backUpTableList = new TreeSet<>();
-
     private static final Integer CORE_POOL_SIZE = Runtime.getRuntime().availableProcessors();
 
     private final ThreadPoolExecutor pool = new ThreadPoolExecutor(
@@ -95,14 +93,6 @@ public class IoComposeServiceDatabase {
             new LinkedBlockingQueue<>(1000),
             new ThreadPoolExecutor.CallerRunsPolicy() // 反压策略：队列满时由调用线程执行
     );
-
-    {
-        backUpTableList.addAll(Arrays.asList(DEFAULT_TABLE));
-        // downsamplingRate.add(2);
-        // downsamplingRate.add(4);
-        // downsamplingRate.add(8);
-        // downsamplingRate.add(16);
-    }
 
     public static Integer[] data = new Integer[]{4, 8, 32, 64, 128, 256, 512};
 
@@ -1042,6 +1032,8 @@ public class IoComposeServiceDatabase {
                 responseVo.setMessage("当前trace实例还没有启动(刚创建),没有需要导出的数据");
                 return responseVo;
             }
+            Set<String> backUpTableList = new TreeSet<>();
+            backUpTableList.addAll(Arrays.asList(DEFAULT_TABLE));
             backUpTableList.add(tableName);
             for (int i = 0; i < shardNum; i++) {
                 String tableShardName = tableName.concat("_").concat(String.valueOf(i));
@@ -1124,6 +1116,8 @@ public class IoComposeServiceDatabase {
                 responseVo.setMessage("当前trace实例还没有启动(刚创建),没有需要导出的数据");
                 return responseVo;
             }
+            Set<String> backUpTableList = new TreeSet<>();
+            backUpTableList.addAll(Arrays.asList(DEFAULT_TABLE));
             backUpTableList.add(tableName);
             for (int i = 0; i < shardNum; i++) {
                 String tableShardName = tableName.concat("_").concat(String.valueOf(i));
