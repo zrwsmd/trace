@@ -636,6 +636,7 @@ public class IoComposeServiceDatabase {
                     // writeTimestampToD3("gap="+gap+",downTableSuffix="+downTableSuffix+",closestRate="+closestRate,reqStartTimestamp,reqEndTimestamp);
                     // writeTimestampToD3("大数据量当前使用了" + downTableSuffix + "降采样", reqStartTimestamp,
                     // reqEndTimestamp);
+                    sortAllData(allMultiValueMap);
                     return allMultiValueMap;
                 }
                 // writeTimestampToD3("originalNum=" + originalNum + ",reqNum=" + reqNum,
@@ -682,6 +683,7 @@ public class IoComposeServiceDatabase {
                 // }
                 // writeTimestampToD3("小数据量使用了".concat(String.valueOf(closestRate).concat("降采样")),
                 // reqStartTimestamp, reqEndTimestamp);
+                sortAllData(allMultiValueMap);
                 return allMultiValueMap;
 
             }
@@ -720,6 +722,27 @@ public class IoComposeServiceDatabase {
         return lagList;
     }
 
+    private void sortAllData(MultiValueMap allMultiValueMap) {
+        //long start = System.currentTimeMillis();
+        if (allMultiValueMap == null || allMultiValueMap.isEmpty()) {
+            return;
+        }
+        Set entrySet = allMultiValueMap.entrySet();
+        for (Object object : entrySet) {
+            Map.Entry entry = (Map.Entry) object;
+            List list = (List) entry.getValue();
+            if (CollectionUtils.isNotEmpty(list)) {
+                Collections.sort(list, (o1, o2) -> {
+                    BigDecimal[] arr1 = (BigDecimal[]) o1;
+                    BigDecimal[] arr2 = (BigDecimal[]) o2;
+                    return arr1[0].compareTo(arr2[0]);
+                });
+            }
+        }
+        //long end = System.currentTimeMillis();
+        //System.out.println("排序花费了"+(end-start)+"ms");
+    }
+
     private MultiValueMap handleFromFull(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
                                          List<Map<String, String>> mapList, MultiValueMap allMultiValueMap, String fieldName,
                                          Set<String> queryTableList)
@@ -739,6 +762,7 @@ public class IoComposeServiceDatabase {
             handleFullTailData(reqStartTimestamp, reqEndTimestamp, currentTableName, mapList, fieldName,
                     allMultiValueMap, getConfigPer());
         }
+        sortAllData(allMultiValueMap);
         return allMultiValueMap;
     }
 
