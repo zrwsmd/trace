@@ -723,7 +723,6 @@ public class IoComposeServiceDatabase {
     }
 
     private void sortAllData(MultiValueMap allMultiValueMap) {
-        //long start = System.currentTimeMillis();
         if (allMultiValueMap == null || allMultiValueMap.isEmpty()) {
             return;
         }
@@ -732,15 +731,26 @@ public class IoComposeServiceDatabase {
             Map.Entry entry = (Map.Entry) object;
             List list = (List) entry.getValue();
             if (CollectionUtils.isNotEmpty(list)) {
+                // 排序
                 Collections.sort(list, (o1, o2) -> {
                     BigDecimal[] arr1 = (BigDecimal[]) o1;
                     BigDecimal[] arr2 = (BigDecimal[]) o2;
                     return arr1[0].compareTo(arr2[0]);
                 });
+                // 去重：排序后相邻比较时间戳(index=0)，保留第一个
+                List deduped = new ArrayList();
+                BigDecimal lastTs = null;
+                for (Object item : list) {
+                    BigDecimal[] arr = (BigDecimal[]) item;
+                    if (lastTs == null || arr[0].compareTo(lastTs) != 0) {
+                        deduped.add(item);
+                        lastTs = arr[0];
+                    }
+                }
+                list.clear();
+                list.addAll(deduped);
             }
         }
-        //long end = System.currentTimeMillis();
-        //System.out.println("排序花费了"+(end-start)+"ms");
     }
 
     private MultiValueMap handleFromFull(Long reqStartTimestamp, Long reqEndTimestamp, String currentTableName,
